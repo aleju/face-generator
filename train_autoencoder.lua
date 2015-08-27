@@ -5,7 +5,6 @@ require 'image'
 --require 'datasets'
 require 'pl'
 require 'paths'
-require 'layers.SpatialConvolutionUpsample'
 image_utils = require 'utils.image'
 ok, disp = pcall(require, 'display')
 if not ok then print('display not found. unable to plot') end
@@ -19,7 +18,7 @@ OPT = lapp[[
   -n,--network       (default "")          reload pretrained network
   -p,--plot                                plot while training
   -r,--learningRate  (default 0.02)        learning rate
-  -b,--batchSize     (default 100)         batch size
+  -b,--batchSize     (default 128)         batch size
   -m,--momentum      (default 0)           momentum, for SGD only
   --coefL1           (default 0)           L1 penalty on the weights
   --coefL2           (default 0)           L2 penalty on the weights
@@ -40,7 +39,7 @@ print(OPT)
 torch.manualSeed(1)
 
 -- threads
-torch.setnumthreads(opt.threads)
+torch.setnumthreads(OPT.threads)
 print('<torch> set nb of threads to ' .. torch.getnumthreads())
 
 -- adjust dataset
@@ -49,19 +48,20 @@ DATASET.setFileExtension("pgm")
 DATASET.setScale(OPT.scale)
 
 -- run on gpu if chosen
-if opt.gpu then
+if OPT.gpu then
+    print("<trainer> starting gpu support...")
     require 'cunn'
-    cutorch.setDevice(opt.gpu + 1)
-    print('<gpu> using device ' .. opt.gpu)
+    cutorch.setDevice(OPT.gpu + 1)
+    print(string.format("<trainer> using gpu device %d", OPT.gpu))
     torch.setdefaulttensortype('torch.CudaTensor')
 else
     torch.setdefaulttensortype('torch.FloatTensor')
 end
 
 -- axis of images: 3 channels, <scale> height, <scale> width
-OPT.geometry = {1, opt.scale, opt.scale}
+OPT.geometry = {1, OPT.scale, OPT.scale}
 -- size in values/pixels per input image (channels*height*width)
-local INPUT_SZ = opt.geometry[1] * opt.geometry[2] * opt.geometry[3]
+local INPUT_SZ = OPT.geometry[1] * OPT.geometry[2] * OPT.geometry[3]
 
 function setWeights(weights, std)
     weights:randn(weights:size())
@@ -81,17 +81,15 @@ end
 
 MODEL_AE = nn.Sequential()
 
-MODEL_AE:add(nn.View(input_sz))
-MODEL_AE:add(nn.Linear(input_sz, 512))
-MODEL_AE:add(nn.PReLU())
+MODEL_AE:add(nn.View(INPUT_SZ))
+MODEL_AE:add(nn.Linear(INPUT_SZ, 512))
+MODEL_AE:add(nn.ReLU())
 MODEL_AE:add(nn.Linear(512, OPT.noiseDim))
 MODEL_AE:add(nn.Tanh())
 MODEL_AE:add(nn.Dropout(0.50))
-MODEL_AE:add(nn.Linear(OPT.noiseDim, 128))
+MODEL_AE:add(nn.Linear(OPT.noiseDim, 256))
 MODEL_AE:add(nn.ReLU())
-MODEL_AE:add(nn.Linear(128, 128))
-MODEL_AE:add(nn.ReLU())
-MODEL_AE:add(nn.Linear(128, INPUT_SZ))
+MODEL_AE:add(nn.Linear(256, INPUT_SZ))
 MODEL_AE:add(nn.Sigmoid())
 MODEL_AE:add(nn.View(OPT.geometry[1], OPT.geometry[2], OPT.geometry[3]))
 
@@ -105,18 +103,18 @@ CRITERION = nn.AbsCriterion()
 PARAMETERS_AE, GRAD_PARAMETERS_AE = MODEL_AE:getParameters()
 
 if OPT.gpu then
-    print('Copy model to gpu')
+    print('<trainer> Copy model to gpu')
     MODEL_AE:cuda()
 end
 
 -- print networks
-print("Autoencoder network:")
+print("<trainer> Autoencoder network:")
 print(MODEL_AE)
 
 -- create training set and normalize
-print('Loading training dataset...')
+print('<trainer> Loading training dataset...')
 TRAIN_DATA = DATASET.loadImages(1, 10000)
-print('Loading validation dataset...')
+print('<trainer> Loading validation dataset...')
 VAL_DATA = DATASET.loadImages(10001, 512)
 
 -- Set optimizer state if it hasn't been loaded from file
@@ -124,12 +122,12 @@ OPTSTATE = {
     adagrad = {},
     adam = {},
     rmsprop = {},
-    sgd = {learningRate = opt.learningRate, momentum = opt.momentum}
+    sgd = {learningRate = OPT.learningRate, momentum = OPT.momentum}
 }
 
 -- Get examples to plot
 function getSamples(dataset, N)
-    local images = torch.Tensor(N, opt.geometry[1], opt.geometry[2], opt.geometry[3])
+    local images = torch.Tensor(N, OPT.geometry[1], OPT.geometry[2], OPT.geometry[3])
     for i=1, N do
         images[i] = dataset[i]
     end
@@ -144,16 +142,21 @@ function train(usedDataset)
     local N = usedDataset:size()
     local time = sys.clock()
 
-    torch.setdefaulttensortype('torch.FloatTensor')
-    local shuffle = torch.randperm(N)
-    torch.setdefaulttensortype('torch.CudaTensor')
+    local shuffle
+    if OPT.gpu then
+        torch.setdefaulttensortype('torch.FloatTensor')
+        shuffle = torch.randperm(N)
+        torch.setdefaulttensortype('torch.CudaTensor')
+    else
+        shuffle = torch.randperm(N)
+    end
 
     -- do one epoch
     print('\n<trainer> on training set:')
     print("<trainer> online epoch # " .. EPOCH .. ' [batchSize = ' .. OPT.batchSize .. ']')
     for t = 1,N,OPT.batchSize do
         -- if the last batch has a size smaller than opt.batchSize, adjust for that
-        local thisBatchSize = math.min(opt.batchSize, N - t + 1)
+        local thisBatchSize = math.min(OPT.batchSize, N - t + 1)
         local inputs = torch.Tensor(thisBatchSize, OPT.geometry[1], OPT.geometry[2], OPT.geometry[3])
         local targets = torch.Tensor(thisBatchSize, OPT.geometry[1], OPT.geometry[2], OPT.geometry[3])
         
@@ -198,13 +201,13 @@ function train(usedDataset)
         optim.adam(fevalAE, PARAMETERS_AE, OPTSTATE.adam)
 
         -- display progress
-        xlua.progress(t, dataset:size())
+        xlua.progress(t, usedDataset:size())
     end -- end for loop over dataset
 
     -- fill out progress bar completely,
     -- for some reason that doesn't happen in the previous loop
     -- probably because it progresses to t instead of t+dataBatchSize
-    xlua.progress(dataset:size(), dataset:size())
+    xlua.progress(usedDataset:size(), usedDataset:size())
 
     -- time taken
     time = sys.clock() - time
@@ -228,7 +231,7 @@ function train(usedDataset)
 end
 
 function exitIfNaNs(checkIn)
-    local nanCount = samplesTrain[2]:ne(samplesTrain[2]):sum()
+    local nanCount = checkIn:ne(checkIn):sum()
     if nanCount > 0 then
         print("[ERROR] Detected " .. nanCount .. " NaNs. Exiting.")
         os.exit()
@@ -252,7 +255,7 @@ while true do
         disp.image(samplesVal[1], {win=OPT.window+2, width=OPT.geometry[3]*10, title=OPT.save .. " (originals val)"})
         disp.image(samplesVal[2], {win=OPT.window+3, width=OPT.geometry[3]*10, title=OPT.save .. " (decoded val)"})
 
-        if opt.gpu then
+        if OPT.gpu then
             torch.setdefaulttensortype('torch.CudaTensor')
         else
             torch.setdefaulttensortype('torch.FloatTensor')

@@ -32,7 +32,7 @@ function dataset.loadImages(startAt, count)
 
     local images = dataset.loadImagesFromDirs(dataset.dirs, dataset.fileExtension, startAt, count, false)
     local data = torch.FloatTensor(#images, dataset.nbChannels, dataset.originalScale, dataset.originalScale)
-    for i=1, #allImages do
+    for i=1, #images do
         data[i] = images[i]
     end
 
@@ -41,14 +41,14 @@ function dataset.loadImages(startAt, count)
 
     local result = {}
     --result.data = data
-    result.scaled = torch.Tensor(N, dataset.nb_channels, dataset.scale, dataset.scale)
+    result.scaled = torch.Tensor(N, dataset.nbChannels, dataset.scale, dataset.scale)
 
     for i=1, N do
         result.scaled[i] = image.scale(data[i], dataset.scale, dataset.scale)
     end
 
 
-    function dataset:size()
+    function result:size()
         return N
     end
 
@@ -77,7 +77,7 @@ function dataset.loadImagesFromDirs(dirs, ext, startAt, count, doSort)
 
         -- Check files
         if #files == 0 then
-            error('given directory doesnt contain any files of type: ' .. opt.ext)
+            error('given directory doesnt contain any files of type: ' .. ext)
         end
     end
     
@@ -91,14 +91,18 @@ function dataset.loadImagesFromDirs(dirs, ext, startAt, count, doSort)
 
     ----------------------------------------------------------------------
     -- Extract requested files from startAt to startAt+count
-    files = files.sub(startAt, count)
+    local filesExtracted = {}
+    local endAt = math.min(startAt+count-1, #files)
+    for i=startAt, endAt do
+        filesExtracted[#filesExtracted+1] = files[i]
+    end
     
     ----------------------------------------------------------------------
     -- 4. Finally we load images
 
     -- Go over the file list:
     local images = {}
-    for i,file in ipairs(files) do
+    for i,file in ipairs(filesExtracted) do
        -- load each image
        table.insert(images, image.load(file, dataset.nbChannels, "float"))
     end
