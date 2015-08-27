@@ -1,0 +1,109 @@
+require 'torch'
+require 'image'
+require 'paths'
+
+local dataset = {}
+
+dataset.dirs = {} -- '/media/aj/grab/ml/datasets/lfwcrop_grey/faces'
+dataset.fileExtension = "" --'pgm'
+
+dataset.originalScale = 64
+dataset.scale = 32
+dataset.nbChannels = 1
+
+function dataset.setDirs(dirs)
+  dataset.dirs = dirs
+end
+
+function dataset.setFileExtension(fileExtension)
+  dataset.fileExtension = fileExtension
+end
+
+function dataset.setScale(scale)
+  dataset.scale = scale
+end
+
+function dataset.setNbChannels(nbChannels)
+  dataset.nbChannels = nbChannels
+end
+
+function dataset.loadImages(startAt, count)
+    local endBefore = startAt + count
+
+    local images = dataset.loadImagesFromDirs(dataset.dirs, dataset.fileExtension, startAt, count, false)
+    local data = torch.FloatTensor(#images, dataset.nbChannels, dataset.originalScale, dataset.originalScale)
+    for i=1, #allImages do
+        data[i] = images[i]
+    end
+
+    local N = data:size(1)
+    print(string.format('<dataset> loaded %d examples', N))
+
+    local result = {}
+    --result.data = data
+    result.scaled = torch.Tensor(N, dataset.nb_channels, dataset.scale, dataset.scale)
+
+    for i=1, N do
+        result.scaled[i] = image.scale(data[i], dataset.scale, dataset.scale)
+    end
+
+
+    function dataset:size()
+        return N
+    end
+
+    setmetatable(result, {__index = function(self, index)
+        return self.scaled[index]
+    end})
+
+    return result
+end
+
+
+function dataset.loadImagesFromDirs(dirs, ext, startAt, count, doSort)
+    -- code from: https://github.com/andresy/torch-demos/blob/master/load-data/load-images.lua
+    local files = {}
+
+    for i=1, #dirs do
+        local dir = dirs[i]
+        -- Go over all files in directory. We use an iterator, paths.files().
+        for file in paths.files(dir) do
+            -- We only load files that match the extension
+            if file:find(ext .. '$') then
+                -- and insert the ones we care about in our table
+                table.insert(files, paths.concat(dir,file))
+            end
+        end
+
+        -- Check files
+        if #files == 0 then
+            error('given directory doesnt contain any files of type: ' .. opt.ext)
+        end
+    end
+    
+    ----------------------------------------------------------------------
+    -- 3. Sort file names
+
+    -- We sort files alphabetically, it's quite simple with table.sort()
+    if doSort then
+        table.sort(files, function (a,b) return a < b end)
+    end
+
+    ----------------------------------------------------------------------
+    -- Extract requested files from startAt to startAt+count
+    files = files.sub(startAt, count)
+    
+    ----------------------------------------------------------------------
+    -- 4. Finally we load images
+
+    -- Go over the file list:
+    local images = {}
+    for i,file in ipairs(files) do
+       -- load each image
+       table.insert(images, image.load(file, dataset.nbChannels, "float"))
+    end
+    
+    return images
+end
+
+return dataset
