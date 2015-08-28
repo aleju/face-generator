@@ -128,7 +128,7 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
         -- create closure to evaluate f(X) and df/dX of discriminator
         local fevalD = function(x)
             collectgarbage()
-            local confusion_batch_D = optim.ConfusionMatrix(classes)
+            local confusion_batch_D = optim.ConfusionMatrix(CLASSES)
             confusion_batch_D:zero()
 
             if x ~= PARAMETERS_D then -- get new parameters
@@ -158,7 +158,7 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
             for i = 1,thisBatchSize do
                 local c
                 if outputs[i][1] > 0.5 then c = 2 else c = 1 end
-                confusion:add(c, targets[i]+1)
+                CONFUSION:add(c, targets[i]+1)
                 confusion_batch_D:add(c, targets[i]+1)
                 --print("outputs[i][1]:" .. (outputs[i][1]) .. ", c: " .. c ..", targets[i]+1:" .. (targets[i]+1))
             end
@@ -175,7 +175,7 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
             lastAccuracyD = tV
             if doTrainD then
                 countTrainedD = countTrainedD + 1
-                return f,gradParameters_D
+                return f,GRAD_PARAMETERS_D
             else
                 countNotTrainedD = countNotTrainedD + 1
                 return false,false
@@ -223,25 +223,28 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
         for k=1,OPT.K do
             -- (1.1) Real data 
             local inputIdx = 1
-            for i = t,math.min(t+dataBatchSize-1,dataset:size()) do
+            local realDataSize = thisBatchSize / 2
+            for i = 1, realDataSize do
                 local idx = math.random(dataset:size())
                 local sample = dataset[idx]
                 --inputs[k] = sample[1]:clone()
                 inputs[inputIdx] = sample:clone()
                 inputIdx = inputIdx + 1
             end
-            targets[{{1,dataBatchSize}}]:fill(Y_NOT_GENERATOR)
+            targets[{{1,realDataSize}}]:fill(Y_NOT_GENERATOR)
 
             -- (1.2) Sampled data
-            local samples = createImages(dataBatchSize, false)
+            local samples = createImages(realDataSize, false)
             --noiseInputs:normal(0.0, 0.35)
             --local samples = MODEL_AE:forward(noiseInputs[{{dataBatchSize+1,opt.batchSize}}])
             --samples = MODEL_G:forward(samples)
-            for i = 1, dataBatchSize do
+            for i = 1, realDataSize do
+                --print("t=" .. t .. ", k=" .. k .. ", i=" .. i .. ", inputIdx=" .. inputIdx .. ", #samples=" .. (samples:size(1) .. ", thisBatchSize=" .. thisBatchSize))
+                samples[i]:clone()
                 inputs[inputIdx] = samples[i]:clone()
                 inputIdx = inputIdx + 1
             end
-            targets[{{dataBatchSize+1,OPT.batchSize}}]:fill(Y_GENERATOR)
+            targets[{{realDataSize+1,thisBatchSize}}]:fill(Y_GENERATOR)
             
             --optim.sgd(fevalD, parameters_D, OPTSTATE.sgd.D)
             --optim.adagrad(fevalD, parameters_D, ADAGRAD_STATE_D)
@@ -256,8 +259,8 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
         
         --optim.sgd(fevalG_on_D, parameters_G, OPTSTATE.sgd.G)
         --optim.adagrad(fevalG_on_D, parameters_G, ADAGRAD_STATE_G)
-        --interruptableAdagrad(fevalG_on_D, parameters_G, OPTSTATE.adagrad.G)
-        interruptableAdam(fevalG_on_D, PARAMETERS_G, OPTSTATE.adam.G)
+        interruptableAdagrad(fevalG_on_D, PARAMETERS_G, OPTSTATE.adagrad.G)
+        --interruptableAdam(fevalG_on_D, PARAMETERS_G, OPTSTATE.adam.G)
 
         -- display progress
         xlua.progress(t, dataset:size())
@@ -288,7 +291,7 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
         if paths.filep(filename) then
             os.execute(string.format("mv %s %s.old", filename, filename))
         end
-        print('<trainer> saving network to '..filename)
+        print(string.format("<trainer> saving network to %s", filename))
         torch.save(filename, {D = MODEL_D, G = MODEL_G, opt = OPT, optstate = OPTSTATE})
     end
 

@@ -27,9 +27,9 @@ OPT = lapp[[
   --GL2              (default 0)           L2 penalty on the weights of G
   --DL1              (default 0)           L1 penalty on the weights of D
   --DL2              (default 0)           L2 penalty on the weights of D
-  -t,--threads       (default 4)           number of threads
+  -t,--threads       (default 8)           number of threads
   -g,--gpu           (default -1)          gpu to run on (default cpu)
-  -d,--noiseDim      (default 100)         dimensionality of noise vector
+  -d,--noiseDim      (default 256)         dimensionality of noise vector
   --K                (default 1)           number of iterations to optimize D for
   -w, --window       (default 3)           window id of sample image
   --hidden_G         (default 8000)        number of units in hidden layers of G
@@ -48,11 +48,6 @@ torch.manualSeed(1)
 torch.setnumthreads(OPT.threads)
 print('<torch> set nb of threads to ' .. torch.getnumthreads())
 
--- adjust dataset
-DATASET.setDirs({"/media/aj/grab/ml/datasets/lfwcrop_grey/faces"})
-DATASET.setFileExtension("pgm")
-DATASET.setScale(OPT.scale)
-
 -- run on gpu if chosen
 if OPT.gpu then
     print("<trainer> starting gpu support...")
@@ -65,6 +60,7 @@ else
 end
 
 -- possible output of disciminator
+CLASSES = {"0", "1"}
 Y_GENERATOR = 0
 Y_NOT_GENERATOR = 1
 
@@ -79,6 +75,9 @@ function setWeights(weights, std)
 end
 
 function initializeWeights(model, stdWeights, stdBias)
+    stdWeights = stdWeights or 0.005
+    stdBias = stdBias or 0.001
+    
     for m = 1, #model.modules do
         if model.modules[m].weight then
             setWeights(model.modules[m].weight, stdWeights)
@@ -168,24 +167,22 @@ local tmp = torch.load(OPT.autoencoder)
 local savedAutoencoder = tmp.AE
 
 MODEL_AE = nn.Sequential()
-MODEL_AE:add(nn.Linear(OPT.noiseDim, 128))
+MODEL_AE:add(nn.Linear(OPT.noiseDim, 256))
 MODEL_AE:add(nn.ReLU())
-MODEL_AE:add(nn.Linear(128, 128))
-MODEL_AE:add(nn.ReLU())
-MODEL_AE:add(nn.Linear(128, INPUT_SZ))
+MODEL_AE:add(nn.Linear(256, INPUT_SZ))
 MODEL_AE:add(nn.Sigmoid())
 MODEL_AE:add(nn.View(OPT.geometry[1], OPT.geometry[2], OPT.geometry[3]))
 
 local mapping = {{1,6+1}, {3,6+3}, {5,6+5}}
 for i=1, #mapping do
-    print("Loading AE layer " .. mapping[i][1] .. " from autoencoder layer " .. mapping[i][2] .. "...")
+    print(string.format("Loading AE layer %d from autoencoder layer %d ...", mapping[i][1], mapping[i][2]))
     local mapTo = mapping[i][1]
     local mapFrom = mapping[i][2]
-    if model_AE.modules[mapTo].weight and savedAutoencoder.modules[mapFrom].weight then
-        model_AE.modules[mapTo].weight = savedAutoencoder.modules[mapFrom].weight
+    if MODEL_AE.modules[mapTo].weight and savedAutoencoder.modules[mapFrom].weight then
+        MODEL_AE.modules[mapTo].weight = savedAutoencoder.modules[mapFrom].weight
     end
-    if model_AE.modules[mapTo].bias and savedAutoencoder.modules[mapFrom].bias then
-        model_AE.modules[mapTo].bias = savedAutoencoder.modules[mapFrom].bias
+    if MODEL_AE.modules[mapTo].bias and savedAutoencoder.modules[mapFrom].bias then
+        MODEL_AE.modules[mapTo].bias = savedAutoencoder.modules[mapFrom].bias
     end
 end
 
@@ -204,33 +201,37 @@ print(MODEL_D)
 print('Generator network:')
 print(MODEL_G)
 
-
-
-----------------------------------------------------------------------
--- get/create dataset
-----------------------------------------------------------------------
-
--- create training set and normalize
-print('Loading training dataset...')
-TRAIN_DATA = dataset.loadImages(1, 10000)
-
--- create validation set and normalize
-print('Loading validation dataset...')
-VAL_DATA = ds_cats.loadValidationSet(10001, 512)
-
--- this matrix records the current confusion across classes
-CONFUSION = optim.ConfusionMatrix(classes)
-
--- log results to files
-trainLogger = optim.Logger(paths.concat(opt.save, 'train.log'))
-testLogger = optim.Logger(paths.concat(opt.save, 'test.log'))
-
 if OPT.gpu then
   print("Copying model to gpu...")
   MODEL_AE:cuda()
   MODEL_D:cuda()
   MODEL_G:cuda()
 end
+
+
+----------------------------------------------------------------------
+-- get/create dataset
+----------------------------------------------------------------------
+-- adjust dataset
+DATASET.setDirs({"/media/aj/grab/ml/datasets/lfwcrop_grey/faces"})
+DATASET.setFileExtension("pgm")
+DATASET.setScale(OPT.scale)
+
+-- create training set and normalize
+print('Loading training dataset...')
+TRAIN_DATA = DATASET.loadImages(1, 10000)
+
+-- create validation set and normalize
+print('Loading validation dataset...')
+VAL_DATA = DATASET.loadImages(10001, 500)
+----------------------------------------------------------------------
+
+-- this matrix records the current confusion across classes
+CONFUSION = optim.ConfusionMatrix(CLASSES)
+
+-- log results to files
+trainLogger = optim.Logger(paths.concat(OPT.save, 'train.log'))
+testLogger = optim.Logger(paths.concat(OPT.save, 'test.log'))
 
 -- Set optimizer state if it hasn't been loaded from file
 if OPTSTATE == nil then
@@ -263,29 +264,31 @@ function createNoiseInputs(N)
     return noiseInputs
 end
 
-function createImagesFromNoise(noiseInputs, outputAsList)
+function createImagesFromNoise(noiseInputs, outputAsList, refineWithG)
     local images = MODEL_AE:forward(noiseInputs)
-    images = MODEL_G:forward(samples)
+    if refineWithG == nil or refineWithG ~= false then
+        images = MODEL_G:forward(images)
+    end
     if outputAsList then
         local imagesList = {}
-        for i=1,N do
+        for i=1, images:size(1) do
             imagesList[#imagesList+1] = images[i]:float()
-        end 
+        end
         return imagesList
     else
         return images
     end
 end
 
-function createImages(N, outputAsList)
-    return createImagesFromNoise(createNoiseInputs(N, outputAsList))
+function createImages(N, outputAsList, refineWithG)
+    return createImagesFromNoise(createNoiseInputs(N), outputAsList, refineWithG)
 end
 
 function sortImagesByPrediction(images, ascending, nbMaxOut)
     local predictions = MODEL_D:forward(images)
     local imagesWithPreds = {}
-    for i=1,#images do
-        imagesWithPreds[i] = {images[i], predictions[i]}
+    for i=1,images:size(1) do
+        imagesWithPreds[i] = {images[i], predictions[i][1]}
     end
     
     if ascending then
@@ -305,9 +308,10 @@ function sortImagesByPrediction(images, ascending, nbMaxOut)
 end
 
 function visualizeProgress(noiseInputs)
-    local semiRandomImages = createImagesFromNoise(noiseInputs, true)
+    local semiRandomImagesUnrefined = createImagesFromNoise(noiseInputs, true, false)
+    local semiRandomImagesRefined = createImagesFromNoise(noiseInputs, true, true)
     
-    local randomImages = createImages(300, true)
+    local randomImages = createImages(300, false)
     local badImages = sortImagesByPrediction(randomImages, true, 50)
     local goodImages = sortImagesByPrediction(randomImages, false, 50)
     
@@ -315,9 +319,10 @@ function visualizeProgress(noiseInputs)
         torch.setdefaulttensortype('torch.FloatTensor')
     end
 
-    DISP.image(semiRandomImages, {win=opt.window, width=OPT.geometry[3]*10, title="semi-random generated images"})
-    DISP.image(badImages, {win=opt.window+1, width=OPT.geometry[3]*10, title="best samples"})
-    DISP.image(goodImages, {win=opt.window+2, width=OPT.geometry[3]*10, title="worst samples"})
+    DISP.image(semiRandomImagesUnrefined, {win=OPT.window, width=OPT.geometry[3]*15, title="semi-random generated images (before G)"})
+    DISP.image(semiRandomImagesRefined, {win=OPT.window+1, width=OPT.geometry[3]*15, title="semi-random generated images (after G)"})
+    DISP.image(badImages, {win=OPT.window+2, width=OPT.geometry[3]*15, title="best samples"})
+    DISP.image(goodImages, {win=OPT.window+3, width=OPT.geometry[3]*15, title="worst samples"})
     
     if OPT.gpu then
         torch.setdefaulttensortype('torch.CudaTensor')
@@ -329,7 +334,7 @@ end
 
 EPOCH = 1
 VIS_NOISE_INPUTS = createNoiseInputs(100)
-if opt.plot then
+if OPT.plot then
     visualizeProgress(VIS_NOISE_INPUTS)
 end
 

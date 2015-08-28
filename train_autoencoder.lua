@@ -22,9 +22,9 @@ OPT = lapp[[
   -m,--momentum      (default 0)           momentum, for SGD only
   --coefL1           (default 0)           L1 penalty on the weights
   --coefL2           (default 0)           L2 penalty on the weights
-  -t,--threads       (default 4)           number of threads
+  -t,--threads       (default 8)           number of threads
   -g,--gpu           (default -1)          gpu to run on (default cpu)
-  -d,--noiseDim      (default 100)         dimensionality of noise vector
+  -d,--noiseDim      (default 256)         dimensionality of noise vector
   --K                (default 1)           number of iterations to optimize D for
   -w, --window       (default 3)           window id of sample image
   --hidden_G         (default 8000)        number of units in hidden layers of G
@@ -41,11 +41,6 @@ torch.manualSeed(1)
 -- threads
 torch.setnumthreads(OPT.threads)
 print('<torch> set nb of threads to ' .. torch.getnumthreads())
-
--- adjust dataset
-DATASET.setDirs({"/media/aj/grab/ml/datasets/lfwcrop_grey/faces"})
-DATASET.setFileExtension("pgm")
-DATASET.setScale(OPT.scale)
 
 -- run on gpu if chosen
 if OPT.gpu then
@@ -69,6 +64,9 @@ function setWeights(weights, std)
 end
 
 function initializeWeights(model, stdWeights, stdBias)
+    stdWeights = stdWeights or 0.005
+    stdBias = stdBias or 0.001
+    
     for m = 1, #model.modules do
         if model.modules[m].weight then
             setWeights(model.modules[m].weight, stdWeights)
@@ -93,7 +91,7 @@ MODEL_AE:add(nn.Linear(256, INPUT_SZ))
 MODEL_AE:add(nn.Sigmoid())
 MODEL_AE:add(nn.View(OPT.geometry[1], OPT.geometry[2], OPT.geometry[3]))
 
-initializeWeights(MODEL_AE, 0.005, 0.001)
+initializeWeights(MODEL_AE)
 
 -- loss function
 --criterion = nn.MSECriterion()
@@ -111,11 +109,21 @@ end
 print("<trainer> Autoencoder network:")
 print(MODEL_AE)
 
+----------------------------------------------------------------------
+-- get/create dataset
+----------------------------------------------------------------------
+-- adjust dataset
+DATASET.setDirs({"/media/aj/grab/ml/datasets/lfwcrop_grey/faces"})
+DATASET.setFileExtension("pgm")
+DATASET.setScale(OPT.scale)
+
 -- create training set and normalize
 print('<trainer> Loading training dataset...')
 TRAIN_DATA = DATASET.loadImages(1, 10000)
 print('<trainer> Loading validation dataset...')
 VAL_DATA = DATASET.loadImages(10001, 512)
+----------------------------------------------------------------------
+
 
 -- Set optimizer state if it hasn't been loaded from file
 OPTSTATE = {
