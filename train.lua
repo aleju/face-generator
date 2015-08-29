@@ -30,12 +30,14 @@ OPT = lapp[[
   -t,--threads       (default 8)           number of threads
   -g,--gpu           (default -1)          gpu to run on (default cpu)
   -d,--noiseDim      (default 256)         dimensionality of noise vector
-  --K                (default 1)           number of iterations to optimize D for
+  --iterations_D     (default 1)           number of iterations to optimize D for
+  --iterations_G     (default 1)           number of iterations to optimize G for
   -w, --window       (default 3)           window id of sample image
   --hidden_G         (default 8000)        number of units in hidden layers of G
   --hidden_D         (default 1600)        number of units in hidden layers of D
   --scale            (default 32)          scale of images to train on
   --autoencoder      (default "")          path to autoencoder to load weights from
+  --rebuildOptstate  (default 0)           whether to force a rebuild of the optimizer state
 ]]
 
 if OPT.gpu < 0 or OPT.gpu > 3 then OPT.gpu = false end
@@ -95,7 +97,7 @@ end
 -- or initialize them new
 if OPT.network ~= "" then
     print(string.format("<trainer> reloading previously trained network: %s", OPT.network))
-    tmp = torch.load(opt.network)
+    tmp = torch.load(OPT.network)
     MODEL_D = tmp.D
     MODEL_G = tmp.G
     OPTSTATE = tmp.optstate
@@ -139,10 +141,10 @@ else
   left:add(nn.View(INPUT_SZ))
   local right = nn.Sequential()
   right:add(nn.View(INPUT_SZ))
-  right:add(nn.Linear(INPUT_SZ, 128))
-  right:add(nn.ReLU())
-  right:add(nn.BatchNormalization(128))
-  right:add(nn.Linear(128, INPUT_SZ))
+  right:add(nn.Linear(INPUT_SZ, 1024))
+  right:add(nn.PReLU())
+  right:add(nn.BatchNormalization(1024))
+  right:add(nn.Linear(1024, INPUT_SZ))
   right:add(nn.Tanh())
   right:add(nn.MulConstant(0.25))
   
@@ -234,7 +236,7 @@ trainLogger = optim.Logger(paths.concat(OPT.save, 'train.log'))
 testLogger = optim.Logger(paths.concat(OPT.save, 'test.log'))
 
 -- Set optimizer state if it hasn't been loaded from file
-if OPTSTATE == nil then
+if OPTSTATE == nil or OPT.rebuildOptstate == 1 then
     OPTSTATE = {
         adagrad = {D = {}, G = {}},
         adam = {D = {}, G = {}},

@@ -220,7 +220,7 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
         ----------------------------------------------------------------------
         -- (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
         -- Get half a minibatch of real, half fake
-        for k=1,OPT.K do
+        for k=1, OPT.iterations_D do
             -- (1.1) Real data 
             local inputIdx = 1
             local realDataSize = thisBatchSize / 2
@@ -254,13 +254,15 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
 
         ----------------------------------------------------------------------
         -- (2) Update G network: maximize log(D(G(z)))
-        noiseInputs:normal(0.0, 0.35)
-        targets:fill(Y_NOT_GENERATOR)
-        
-        --optim.sgd(fevalG_on_D, parameters_G, OPTSTATE.sgd.G)
-        --optim.adagrad(fevalG_on_D, parameters_G, ADAGRAD_STATE_G)
-        interruptableAdagrad(fevalG_on_D, PARAMETERS_G, OPTSTATE.adagrad.G)
-        --interruptableAdam(fevalG_on_D, PARAMETERS_G, OPTSTATE.adam.G)
+        for k=1, OPT.iterations_G do
+            noiseInputs = createNoiseInputs(noiseInputs:size(1))
+            targets:fill(Y_NOT_GENERATOR)
+            
+            --optim.sgd(fevalG_on_D, parameters_G, OPTSTATE.sgd.G)
+            --optim.adagrad(fevalG_on_D, parameters_G, ADAGRAD_STATE_G)
+            interruptableAdagrad(fevalG_on_D, PARAMETERS_G, OPTSTATE.adagrad.G)
+            --interruptableAdam(fevalG_on_D, PARAMETERS_G, OPTSTATE.adam.G)
+        end
 
         -- display progress
         xlua.progress(t, dataset:size())
