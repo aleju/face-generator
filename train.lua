@@ -112,14 +112,18 @@ else
   branch_conv:add(nn.PReLU())
   branch_conv:add(nn.SpatialMaxPooling(2, 2))
   branch_conv:add(nn.View(32 * (1/4) * OPT.geometry[2] * OPT.geometry[3]))
-  branch_conv:add(nn.Linear(32 * (1/4) * OPT.geometry[2] * OPT.geometry[3], 32))
+  branch_conv:add(nn.Dropout())
+  branch_conv:add(nn.Linear(32 * (1/4) * OPT.geometry[2] * OPT.geometry[3], 512))
+  branch_conv:add(nn.PReLU())
+  branch_conv:add(nn.Linear(512, 128))
   branch_conv:add(nn.PReLU())
   
   local branch_dense = nn.Sequential()
   branch_dense:add(nn.View(INPUT_SZ))
-  branch_dense:add(nn.Linear(INPUT_SZ, 512))
+  branch_dense:add(nn.Linear(INPUT_SZ, 1024))
   branch_dense:add(nn.PReLU())
-  branch_dense:add(nn.Linear(512, 32))
+  branch_dense:add(nn.Dropout())
+  branch_dense:add(nn.Linear(1024, 128))
   branch_dense:add(nn.PReLU())
   
   local concat = nn.ConcatTable()
@@ -129,62 +133,87 @@ else
   MODEL_D = nn.Sequential()
   MODEL_D:add(concat)
   MODEL_D:add(nn.JoinTable(2))
-  MODEL_D:add(nn.Linear(32*2, 64))
+  MODEL_D:add(nn.Linear(128*2, 128))
   MODEL_D:add(nn.PReLU())
-  MODEL_D:add(nn.Linear(64, 1))
+  MODEL_D:add(nn.Linear(128, 1))
   MODEL_D:add(nn.Sigmoid())
   
   --------------
   -- G
   --------------
-  local left = nn.Sequential()
-  left:add(nn.View(INPUT_SZ))
-  local right = nn.Sequential()
-  right:add(nn.View(INPUT_SZ))
-  right:add(nn.Linear(INPUT_SZ, 1024))
-  right:add(nn.PReLU())
-  right:add(nn.BatchNormalization(1024))
-  right:add(nn.Linear(1024, INPUT_SZ))
-  right:add(nn.Tanh())
-  right:add(nn.MulConstant(0.25))
-  
-  local concat = nn.ConcatTable()
-  concat:add(left)
-  concat:add(right)
-  MODEL_G = nn.Sequential()
-  MODEL_G:add(concat)
-  MODEL_G:add(nn.CAddTable())
-  MODEL_G:add(nn.View(OPT.geometry[1], OPT.geometry[2], OPT.geometry[3]))
+  if OPT.autoencoder ~= "" then
+      local left = nn.Sequential()
+      left:add(nn.View(INPUT_SZ))
+      local right = nn.Sequential()
+      right:add(nn.View(INPUT_SZ))
+      right:add(nn.Linear(INPUT_SZ, 1024))
+      right:add(nn.PReLU())
+      right:add(nn.BatchNormalization(1024))
+      right:add(nn.Linear(1024, 1024))
+      right:add(nn.PReLU())
+      right:add(nn.BatchNormalization(1024))
+      right:add(nn.Linear(1024, INPUT_SZ))
+      right:add(nn.Tanh())
+      right:add(nn.MulConstant(0.25))
+      
+      local concat = nn.ConcatTable()
+      concat:add(left)
+      concat:add(right)
+      MODEL_G = nn.Sequential()
+      MODEL_G:add(concat)
+      MODEL_G:add(nn.CAddTable())
+      MODEL_G:add(nn.View(OPT.geometry[1], OPT.geometry[2], OPT.geometry[3]))
+  else
+      --[[
+      MODEL_G = nn.Sequential()
+      MODEL_G:add(nn.Linear(OPT.noiseDim, 1024))
+      MODEL_G:add(nn.PReLU())
+      MODEL_G:add(nn.BatchNormalization(1024))
+      MODEL_G:add(nn.Linear(1024, 1024))
+      MODEL_G:add(nn.PReLU())
+      MODEL_G:add(nn.BatchNormalization(1024))
+      MODEL_G:add(nn.Linear(1024, INPUT_SZ))
+      MODEL_G:add(nn.Sigmoid())
+      MODEL_G:add(nn.View(OPT.geometry[1], OPT.geometry[2], OPT.geometry[3]))
+      --]]
+      MODEL_G = nn.Sequential()
+      MODEL_G:add(nn.Linear(OPT.noiseDim, 4096))
+      MODEL_G:add(nn.PReLU())
+      --MODEL_G:add(nn.BatchNormalization(4096))
+      MODEL_G:add(nn.Linear(4096, INPUT_SZ))
+      MODEL_G:add(nn.Sigmoid())
+      MODEL_G:add(nn.View(OPT.geometry[1], OPT.geometry[2], OPT.geometry[3]))
+  end
   
   initializeWeights(MODEL_D)
   initializeWeights(MODEL_G)
 end
 
 if OPT.autoencoder == "" then
-    print("[ERROR] Autoencoder network required but not set in opt.autoencoder.")
-    os.exit()
-end
-print("<trainer> Loading autoencoder")
-local tmp = torch.load(OPT.autoencoder)
-local savedAutoencoder = tmp.AE
+    print("[INFO] No Autoencoder network specified, will not use an autoencoder.")
+else
+    print("<trainer> Loading autoencoder")
+    local tmp = torch.load(OPT.autoencoder)
+    local savedAutoencoder = tmp.AE
 
-MODEL_AE = nn.Sequential()
-MODEL_AE:add(nn.Linear(OPT.noiseDim, 256))
-MODEL_AE:add(nn.ReLU())
-MODEL_AE:add(nn.Linear(256, INPUT_SZ))
-MODEL_AE:add(nn.Sigmoid())
-MODEL_AE:add(nn.View(OPT.geometry[1], OPT.geometry[2], OPT.geometry[3]))
+    MODEL_AE = nn.Sequential()
+    MODEL_AE:add(nn.Linear(OPT.noiseDim, 256))
+    MODEL_AE:add(nn.ReLU())
+    MODEL_AE:add(nn.Linear(256, INPUT_SZ))
+    MODEL_AE:add(nn.Sigmoid())
+    MODEL_AE:add(nn.View(OPT.geometry[1], OPT.geometry[2], OPT.geometry[3]))
 
-local mapping = {{1,6+1}, {3,6+3}, {5,6+5}}
-for i=1, #mapping do
-    print(string.format("Loading AE layer %d from autoencoder layer %d ...", mapping[i][1], mapping[i][2]))
-    local mapTo = mapping[i][1]
-    local mapFrom = mapping[i][2]
-    if MODEL_AE.modules[mapTo].weight and savedAutoencoder.modules[mapFrom].weight then
-        MODEL_AE.modules[mapTo].weight = savedAutoencoder.modules[mapFrom].weight
-    end
-    if MODEL_AE.modules[mapTo].bias and savedAutoencoder.modules[mapFrom].bias then
-        MODEL_AE.modules[mapTo].bias = savedAutoencoder.modules[mapFrom].bias
+    local mapping = {{1,6+1}, {3,6+3}, {5,6+5}}
+    for i=1, #mapping do
+        print(string.format("Loading AE layer %d from autoencoder layer %d ...", mapping[i][1], mapping[i][2]))
+        local mapTo = mapping[i][1]
+        local mapFrom = mapping[i][2]
+        if MODEL_AE.modules[mapTo].weight and savedAutoencoder.modules[mapFrom].weight then
+            MODEL_AE.modules[mapTo].weight = savedAutoencoder.modules[mapFrom].weight
+        end
+        if MODEL_AE.modules[mapTo].bias and savedAutoencoder.modules[mapFrom].bias then
+            MODEL_AE.modules[mapTo].bias = savedAutoencoder.modules[mapFrom].bias
+        end
     end
 end
 
@@ -204,10 +233,12 @@ print('Generator network:')
 print(MODEL_G)
 
 if OPT.gpu then
-  print("Copying model to gpu...")
-  MODEL_AE:cuda()
-  MODEL_D:cuda()
-  MODEL_G:cuda()
+    print("Copying model to gpu...")
+    if MODEL_AE then
+        MODEL_AE:cuda()
+    end
+    MODEL_D:cuda()
+    MODEL_G:cuda()
 end
 
 
@@ -221,11 +252,11 @@ DATASET.setScale(OPT.scale)
 
 -- create training set and normalize
 print('Loading training dataset...')
-TRAIN_DATA = DATASET.loadImages(1, 10000)
+TRAIN_DATA = DATASET.loadImages(1, 8192+2048)
 
 -- create validation set and normalize
-print('Loading validation dataset...')
-VAL_DATA = DATASET.loadImages(10001, 500)
+--print('Loading validation dataset...')
+--VAL_DATA = DATASET.loadImages(8192+2048, 512)
 ----------------------------------------------------------------------
 
 -- this matrix records the current confusion across classes
@@ -267,10 +298,16 @@ function createNoiseInputs(N)
 end
 
 function createImagesFromNoise(noiseInputs, outputAsList, refineWithG)
-    local images = MODEL_AE:forward(noiseInputs)
-    if refineWithG == nil or refineWithG ~= false then
-        images = MODEL_G:forward(images)
+    local images
+    if MODEL_AE then
+        images = MODEL_AE:forward(noiseInputs)
+        if refineWithG == nil or refineWithG ~= false then
+            images = MODEL_G:forward(images)
+        end
+    else
+        images = MODEL_G:forward(noiseInputs)
     end
+    
     if outputAsList then
         local imagesList = {}
         for i=1, images:size(1) do
@@ -310,7 +347,10 @@ function sortImagesByPrediction(images, ascending, nbMaxOut)
 end
 
 function visualizeProgress(noiseInputs)
-    local semiRandomImagesUnrefined = createImagesFromNoise(noiseInputs, true, false)
+    local semiRandomImagesUnrefined
+    if MODEL_AE then
+        semiRandomImagesUnrefined = createImagesFromNoise(noiseInputs, true, false)
+    end
     local semiRandomImagesRefined = createImagesFromNoise(noiseInputs, true, true)
     
     local randomImages = createImages(300, false)
@@ -321,7 +361,9 @@ function visualizeProgress(noiseInputs)
         torch.setdefaulttensortype('torch.FloatTensor')
     end
 
-    DISP.image(semiRandomImagesUnrefined, {win=OPT.window, width=OPT.geometry[3]*15, title="semi-random generated images (before G)"})
+    if semiRandomImagesUnrefined then
+        DISP.image(semiRandomImagesUnrefined, {win=OPT.window, width=OPT.geometry[3]*15, title="semi-random generated images (before G)"})
+    end
     DISP.image(semiRandomImagesRefined, {win=OPT.window+1, width=OPT.geometry[3]*15, title="semi-random generated images (after G)"})
     DISP.image(badImages, {win=OPT.window+2, width=OPT.geometry[3]*15, title="best samples"})
     DISP.image(goodImages, {win=OPT.window+3, width=OPT.geometry[3]*15, title="worst samples"})
@@ -342,7 +384,7 @@ end
 
 -- training loop
 while true do
-    ADVERSARIAL.train(TRAIN_DATA, 1.01, math.max(10, math.min(1000/OPT.batchSize, 250)))
+    ADVERSARIAL.train(TRAIN_DATA, 0.90, math.max(10, math.min(1000/OPT.batchSize, 250)))
 
     if OPT.plot and EPOCH and EPOCH % 1 == 0 then
         visualizeProgress(VIS_NOISE_INPUTS)

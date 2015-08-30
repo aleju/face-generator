@@ -123,6 +123,10 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
         local inputs = torch.Tensor(thisBatchSize, OPT.geometry[1], OPT.geometry[2], OPT.geometry[3])
         local targets = torch.Tensor(thisBatchSize)
         local noiseInputs = torch.Tensor(thisBatchSize, OPT.noiseDim)
+        if thisBatchSize < 4 then
+            print(string.format("[INFO] skipping batch at t=%d, because its size is less than 2", thisBatchSize))
+            break
+        end
 
         ----------------------------------------------------------------------
         -- create closure to evaluate f(X) and df/dX of discriminator
@@ -193,8 +197,14 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
             GRAD_PARAMETERS_G:zero() -- reset gradients
 
             -- forward pass
-            local samplesAE = MODEL_AE:forward(noiseInputs)
-            local samples = MODEL_G:forward(samplesAE)
+            local samples
+            local samplesAE
+            if MODEL_AE then
+                samplesAE = MODEL_AE:forward(noiseInputs)
+                samples = MODEL_G:forward(samplesAE)
+            else
+                samples = createImagesFromNoise(noiseInputs, false, true)
+            end
             local outputs = MODEL_D:forward(samples)
             local f = CRITERION:forward(outputs, targets)
 
@@ -202,7 +212,11 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
             local df_samples = CRITERION:backward(outputs, targets)
             MODEL_D:backward(samples, df_samples)
             local df_do = MODEL_D.modules[1].gradInput
-            MODEL_G:backward(samplesAE, df_do)
+            if MODEL_AE then
+                MODEL_G:backward(samplesAE, df_do)
+            else
+                MODEL_G:backward(noiseInputs, df_do)
+            end
 
             -- penalties (L1 and L2):
             if OPT.GL1 ~= 0 or OPT.GL2 ~= 0 then
@@ -248,8 +262,9 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
             
             --optim.sgd(fevalD, parameters_D, OPTSTATE.sgd.D)
             --optim.adagrad(fevalD, parameters_D, ADAGRAD_STATE_D)
-            interruptableAdagrad(fevalD, PARAMETERS_D, OPTSTATE.adagrad.D)
-            --interruptableAdam(fevalD, PARAMETERS_D, OPTSTATE.adam.D)
+            --interruptableAdagrad(fevalD, PARAMETERS_D, OPTSTATE.adagrad.D)
+            interruptableAdam(fevalD, PARAMETERS_D, OPTSTATE.adam.D)
+            --optim.rmsprop(fevalD, PARAMETERS_D, OPTSTATE.rmsprop.D)
         end -- end for K
 
         ----------------------------------------------------------------------
@@ -260,8 +275,9 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
             
             --optim.sgd(fevalG_on_D, parameters_G, OPTSTATE.sgd.G)
             --optim.adagrad(fevalG_on_D, parameters_G, ADAGRAD_STATE_G)
-            interruptableAdagrad(fevalG_on_D, PARAMETERS_G, OPTSTATE.adagrad.G)
-            --interruptableAdam(fevalG_on_D, PARAMETERS_G, OPTSTATE.adam.G)
+            --interruptableAdagrad(fevalG_on_D, PARAMETERS_G, OPTSTATE.adagrad.G)
+            interruptableAdam(fevalG_on_D, PARAMETERS_G, OPTSTATE.adam.G)
+            --optim.rmsprop(fevalG_on_D, PARAMETERS_G, OPTSTATE.rmsprop.G)
         end
 
         -- display progress
