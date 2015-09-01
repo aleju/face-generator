@@ -106,24 +106,24 @@ else
   -- D
   --------------
   local branch_conv = nn.Sequential()
-  branch_conv:add(nn.SpatialConvolution(OPT.geometry[1], 32, 3, 3, 1, 1, (3-1)/2))
+  branch_conv:add(nn.SpatialConvolution(OPT.geometry[1], 16, 3, 3, 1, 1, (3-1)/2))
   branch_conv:add(nn.PReLU())
-  branch_conv:add(nn.SpatialConvolution(32, 32, 3, 3, 1, 1, (3-1)/2))
+  branch_conv:add(nn.SpatialConvolution(16, 16, 3, 3, 1, 1, (3-1)/2))
   branch_conv:add(nn.PReLU())
   branch_conv:add(nn.SpatialMaxPooling(2, 2))
-  branch_conv:add(nn.View(32 * (1/4) * OPT.geometry[2] * OPT.geometry[3]))
+  branch_conv:add(nn.View(16 * (1/4) * OPT.geometry[2] * OPT.geometry[3]))
   branch_conv:add(nn.Dropout())
-  branch_conv:add(nn.Linear(32 * (1/4) * OPT.geometry[2] * OPT.geometry[3], 512))
+  branch_conv:add(nn.Linear(16 * (1/4) * OPT.geometry[2] * OPT.geometry[3], 128))
   branch_conv:add(nn.PReLU())
-  branch_conv:add(nn.Linear(512, 128))
-  branch_conv:add(nn.PReLU())
+  --branch_conv:add(nn.Linear(512, 128))
+  --branch_conv:add(nn.PReLU())
   
   local branch_dense = nn.Sequential()
   branch_dense:add(nn.View(INPUT_SZ))
-  branch_dense:add(nn.Linear(INPUT_SZ, 1024))
+  branch_dense:add(nn.Linear(INPUT_SZ, 512))
   branch_dense:add(nn.PReLU())
   branch_dense:add(nn.Dropout())
-  branch_dense:add(nn.Linear(1024, 128))
+  branch_dense:add(nn.Linear(512, 128))
   branch_dense:add(nn.PReLU())
   
   local concat = nn.ConcatTable()
@@ -179,6 +179,7 @@ else
       MODEL_G = nn.Sequential()
       MODEL_G:add(nn.Linear(OPT.noiseDim, 4096))
       MODEL_G:add(nn.PReLU())
+      MODEL_G:add(nn.Dropout(0.1))
       --MODEL_G:add(nn.BatchNormalization(4096))
       MODEL_G:add(nn.Linear(4096, INPUT_SZ))
       MODEL_G:add(nn.Sigmoid())
@@ -293,7 +294,8 @@ end
 
 function createNoiseInputs(N)
     local noiseInputs = torch.Tensor(N, OPT.noiseDim)
-    noiseInputs:normal(0.0, 0.35)
+    --noiseInputs:normal(0.0, 0.35)
+    noiseInputs:uniform(-1.0, 1.0)
     return noiseInputs
 end
 
@@ -347,6 +349,8 @@ function sortImagesByPrediction(images, ascending, nbMaxOut)
 end
 
 function visualizeProgress(noiseInputs)
+    switchToEvaluationMode()
+    
     local semiRandomImagesUnrefined
     if MODEL_AE then
         semiRandomImagesUnrefined = createImagesFromNoise(noiseInputs, true, false)
@@ -373,8 +377,25 @@ function visualizeProgress(noiseInputs)
     else
         torch.setdefaulttensortype('torch.FloatTensor')
     end
+    
+    switchToTrainingMode()
 end
 
+function switchToTrainingMode()
+    if MODEL_AE then
+        MODEL_AE:training()
+    end
+    MODEL_G:training()
+    MODEL_D:training()
+end
+
+function switchToEvaluationMode()
+    if MODEL_AE then
+        MODEL_AE:evaluate()
+    end
+    MODEL_G:evaluate()
+    MODEL_D:evaluate()
+end
 
 EPOCH = 1
 VIS_NOISE_INPUTS = createNoiseInputs(100)

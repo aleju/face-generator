@@ -221,8 +221,8 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
             -- penalties (L1 and L2):
             if OPT.GL1 ~= 0 or OPT.GL2 ~= 0 then
                 -- Loss:
-                f = f + OPT.GL1 * torch.norm(PARAMETERS_D, 1)
-                f = f + OPT.GL2 * torch.norm(PARAMETERS_D, 2)^2/2
+                f = f + OPT.GL1 * torch.norm(PARAMETERS_G, 1)
+                f = f + OPT.GL2 * torch.norm(PARAMETERS_G, 2)^2/2
                 -- Gradients:
                 GRAD_PARAMETERS_G:add(torch.sign(PARAMETERS_G):mul(OPT.GL2) + PARAMETERS_G:clone():mul(OPT.GL2))
             end
@@ -262,8 +262,8 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
             
             --optim.sgd(fevalD, parameters_D, OPTSTATE.sgd.D)
             --optim.adagrad(fevalD, parameters_D, ADAGRAD_STATE_D)
-            --interruptableAdagrad(fevalD, PARAMETERS_D, OPTSTATE.adagrad.D)
-            interruptableAdam(fevalD, PARAMETERS_D, OPTSTATE.adam.D)
+            interruptableAdagrad(fevalD, PARAMETERS_D, OPTSTATE.adagrad.D)
+            --interruptableAdam(fevalD, PARAMETERS_D, OPTSTATE.adam.D)
             --optim.rmsprop(fevalD, PARAMETERS_D, OPTSTATE.rmsprop.D)
         end -- end for K
 
@@ -275,8 +275,8 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
             
             --optim.sgd(fevalG_on_D, parameters_G, OPTSTATE.sgd.G)
             --optim.adagrad(fevalG_on_D, parameters_G, ADAGRAD_STATE_G)
-            --interruptableAdagrad(fevalG_on_D, PARAMETERS_G, OPTSTATE.adagrad.G)
-            interruptableAdam(fevalG_on_D, PARAMETERS_G, OPTSTATE.adam.G)
+            interruptableAdagrad(fevalG_on_D, PARAMETERS_G, OPTSTATE.adagrad.G)
+            --interruptableAdam(fevalG_on_D, PARAMETERS_G, OPTSTATE.adam.G)
             --optim.rmsprop(fevalG_on_D, PARAMETERS_G, OPTSTATE.rmsprop.G)
         end
 
