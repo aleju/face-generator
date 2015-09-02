@@ -105,6 +105,9 @@ else
   --------------
   -- D
   --------------
+  
+  -- scale 32 network
+  --[[
   local branch_conv = nn.Sequential()
   branch_conv:add(nn.SpatialConvolution(OPT.geometry[1], 16, 3, 3, 1, 1, (3-1)/2))
   branch_conv:add(nn.PReLU())
@@ -115,8 +118,6 @@ else
   branch_conv:add(nn.Dropout())
   branch_conv:add(nn.Linear(16 * (1/4) * OPT.geometry[2] * OPT.geometry[3], 128))
   branch_conv:add(nn.PReLU())
-  --branch_conv:add(nn.Linear(512, 128))
-  --branch_conv:add(nn.PReLU())
   
   local branch_dense = nn.Sequential()
   branch_dense:add(nn.View(INPUT_SZ))
@@ -135,6 +136,41 @@ else
   MODEL_D:add(nn.JoinTable(2))
   MODEL_D:add(nn.Linear(128*2, 128))
   MODEL_D:add(nn.PReLU())
+  MODEL_D:add(nn.Linear(128, 1))
+  MODEL_D:add(nn.Sigmoid())
+  --]]
+  
+  -- scale 64 network
+  local branch_conv = nn.Sequential()
+  branch_conv:add(nn.SpatialConvolution(OPT.geometry[1], 4, 3, 3, 1, 1, (3-1)/2))
+  branch_conv:add(nn.PReLU())
+  branch_conv:add(nn.SpatialMaxPooling(2, 2))
+  branch_conv:add(nn.SpatialConvolution(4, 8, 3, 3, 1, 1, (3-1)/2))
+  branch_conv:add(nn.PReLU())
+  branch_conv:add(nn.SpatialMaxPooling(2, 2))
+  branch_conv:add(nn.Dropout())
+  branch_conv:add(nn.View((1/4) * 8 * (1/4) * OPT.geometry[2] * OPT.geometry[3]))
+  branch_conv:add(nn.Linear((1/4) * 8 * (1/4) * OPT.geometry[2] * OPT.geometry[3], 128))
+  branch_conv:add(nn.PReLU())
+  
+  local branch_dense = nn.Sequential()
+  branch_dense:add(nn.View(INPUT_SZ))
+  branch_dense:add(nn.Linear(INPUT_SZ, 512))
+  branch_dense:add(nn.PReLU())
+  branch_dense:add(nn.Dropout())
+  branch_dense:add(nn.Linear(512, 128))
+  branch_dense:add(nn.PReLU())
+  
+  local concat = nn.ConcatTable()
+  concat:add(branch_conv)
+  concat:add(branch_dense)
+  
+  MODEL_D = nn.Sequential()
+  MODEL_D:add(concat)
+  MODEL_D:add(nn.JoinTable(2))
+  MODEL_D:add(nn.Linear(128*2, 128))
+  MODEL_D:add(nn.PReLU())
+  MODEL_D:add(nn.Dropout())
   MODEL_D:add(nn.Linear(128, 1))
   MODEL_D:add(nn.Sigmoid())
   
@@ -179,7 +215,7 @@ else
       MODEL_G = nn.Sequential()
       MODEL_G:add(nn.Linear(OPT.noiseDim, 4096))
       MODEL_G:add(nn.PReLU())
-      MODEL_G:add(nn.Dropout(0.1))
+      MODEL_G:add(nn.Dropout(0.0))
       --MODEL_G:add(nn.BatchNormalization(4096))
       MODEL_G:add(nn.Linear(4096, INPUT_SZ))
       MODEL_G:add(nn.Sigmoid())

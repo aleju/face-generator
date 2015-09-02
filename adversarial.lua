@@ -262,8 +262,8 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
             
             --optim.sgd(fevalD, parameters_D, OPTSTATE.sgd.D)
             --optim.adagrad(fevalD, parameters_D, ADAGRAD_STATE_D)
-            interruptableAdagrad(fevalD, PARAMETERS_D, OPTSTATE.adagrad.D)
-            --interruptableAdam(fevalD, PARAMETERS_D, OPTSTATE.adam.D)
+            --interruptableAdagrad(fevalD, PARAMETERS_D, OPTSTATE.adagrad.D)
+            interruptableAdam(fevalD, PARAMETERS_D, OPTSTATE.adam.D)
             --optim.rmsprop(fevalD, PARAMETERS_D, OPTSTATE.rmsprop.D)
         end -- end for K
 
@@ -275,8 +275,8 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
             
             --optim.sgd(fevalG_on_D, parameters_G, OPTSTATE.sgd.G)
             --optim.adagrad(fevalG_on_D, parameters_G, ADAGRAD_STATE_G)
-            interruptableAdagrad(fevalG_on_D, PARAMETERS_G, OPTSTATE.adagrad.G)
-            --interruptableAdam(fevalG_on_D, PARAMETERS_G, OPTSTATE.adam.G)
+            --interruptableAdagrad(fevalG_on_D, PARAMETERS_G, OPTSTATE.adagrad.G)
+            interruptableAdam(fevalG_on_D, PARAMETERS_G, OPTSTATE.adam.G)
             --optim.rmsprop(fevalG_on_D, PARAMETERS_G, OPTSTATE.rmsprop.G)
         end
 
