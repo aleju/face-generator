@@ -141,6 +141,7 @@ else
   --]]
   
   -- scale 64 network
+  --[[
   local branch_conv = nn.Sequential()
   branch_conv:add(nn.SpatialConvolution(OPT.geometry[1], 4, 3, 3, 1, 1, (3-1)/2))
   branch_conv:add(nn.PReLU())
@@ -171,6 +172,42 @@ else
   MODEL_D:add(nn.Linear(128*2, 128))
   MODEL_D:add(nn.PReLU())
   MODEL_D:add(nn.Dropout())
+  MODEL_D:add(nn.Linear(128, 1))
+  MODEL_D:add(nn.Sigmoid())
+  --]]
+  
+  -- scale 64 sgd network
+  local branch_conv = nn.Sequential()
+  branch_conv:add(nn.SpatialConvolution(OPT.geometry[1], 8, 3, 3, 1, 1, (3-1)/2))
+  branch_conv:add(nn.PReLU())
+  --branch_conv:add(nn.SpatialMaxPooling(2, 2))
+  branch_conv:add(nn.SpatialConvolution(8, 8, 3, 3, 1, 1, (3-1)/2))
+  branch_conv:add(nn.PReLU())
+  branch_conv:add(nn.SpatialMaxPooling(2, 2))
+  branch_conv:add(nn.Dropout())
+  branch_conv:add(nn.View(8 * (1/4) * OPT.geometry[2] * OPT.geometry[3]))
+  branch_conv:add(nn.Linear(8 * (1/4) * OPT.geometry[2] * OPT.geometry[3], 128))
+  branch_conv:add(nn.PReLU())
+  
+  local branch_dense = nn.Sequential()
+  branch_dense:add(nn.View(INPUT_SZ))
+  branch_dense:add(nn.Linear(INPUT_SZ, 512))
+  branch_dense:add(nn.PReLU())
+  branch_dense:add(nn.Dropout())
+  branch_dense:add(nn.Linear(512, 128))
+  branch_dense:add(nn.PReLU())
+  
+  local concat = nn.ConcatTable()
+  concat:add(branch_conv)
+  concat:add(branch_dense)
+  
+  MODEL_D = nn.Sequential()
+  MODEL_D:add(concat)
+  MODEL_D:add(nn.JoinTable(2))
+  MODEL_D:add(nn.Linear(128*2, 128))
+  MODEL_D:add(nn.PReLU())
+  --MODEL_D:add(nn.Dropout())
+  --MODEL_D:add(nn.BatchNormalization(128))
   MODEL_D:add(nn.Linear(128, 1))
   MODEL_D:add(nn.Sigmoid())
   
@@ -307,7 +344,11 @@ testLogger = optim.Logger(paths.concat(OPT.save, 'test.log'))
 if OPTSTATE == nil or OPT.rebuildOptstate == 1 then
     OPTSTATE = {
         adagrad = {D = {}, G = {}},
-        adam = {D = {}, G = {}},
+        adam = {D = {
+            learningRate = 0.001 * 0.95
+        }, G = {
+            learningRate = 0.001
+        }},
         rmsprop = {D = {}, G = {}},
         sgd = {
             D = {learningRate = OPT.learningRate, momentum = OPT.momentum},
@@ -441,7 +482,7 @@ end
 
 -- training loop
 while true do
-    ADVERSARIAL.train(TRAIN_DATA, 0.90, math.max(10, math.min(1000/OPT.batchSize, 250)))
+    ADVERSARIAL.train(TRAIN_DATA, 0.90, 20) --math.max(10, math.min(1000/OPT.batchSize, 250)))
 
     if OPT.plot and EPOCH and EPOCH % 1 == 0 then
         visualizeProgress(VIS_NOISE_INPUTS)

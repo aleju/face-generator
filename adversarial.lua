@@ -3,90 +3,7 @@ require 'nn'
 --require 'cunn'
 require 'optim'
 require 'pl'
-
-function interruptableAdagrad(opfunc, x, config, state)
-    -- (0) get/update state
-    if config == nil and state == nil then
-      print('no state table, ADAGRAD initializing')
-    end
-    local config = config or {}
-    local state = state or config
-    local lr = config.learningRate or 1e-3
-    local lrd = config.learningRateDecay or 0
-    state.evalCounter = state.evalCounter or 0
-    local nevals = state.evalCounter
-
-    -- (1) evaluate f(x) and df/dx
-    local fx,dfdx = opfunc(x)
-    if fx == false then
-        return false
-    end
-
-    -- (3) learning rate decay (annealing)
-    local clr = lr / (1 + nevals*lrd)
-      
-    -- (4) parameter update with single or individual learning rates
-    if not state.paramVariance then
-        state.paramVariance = torch.Tensor():typeAs(x):resizeAs(dfdx):zero()
-        state.paramStd = torch.Tensor():typeAs(x):resizeAs(dfdx)
-    end
-    state.paramVariance:addcmul(1,dfdx,dfdx)
-    state.paramStd:resizeAs(state.paramVariance):copy(state.paramVariance):sqrt()
-    x:addcdiv(-clr, dfdx,state.paramStd:add(1e-10))
-
-    -- (5) update evaluation counter
-    state.evalCounter = state.evalCounter + 1
-
-    -- return x*, f(x) before optimization
-    return x,{fx}
-end
-
-
-function interruptableAdam(opfunc, x, config, state)
-    -- (0) get/update state
-    local config = config or {}
-    local state = state or config
-    local lr = config.learningRate or 0.001
-
-    local beta1 = config.beta1 or 0.9
-    local beta2 = config.beta2 or 0.999
-    local epsilon = config.epsilon or 1e-8
-
-    -- (1) evaluate f(x) and df/dx
-    local fx, dfdx = opfunc(x)
-    if fx == false then
-        return false
-    end
-
-    -- Initialization
-    state.t = state.t or 0
-    -- Exponential moving average of gradient values
-    state.m = state.m or x.new(dfdx:size()):zero()
-    -- Exponential moving average of squared gradient values
-    state.v = state.v or x.new(dfdx:size()):zero()
-    -- A tmp tensor to hold the sqrt(v) + epsilon
-    state.denom = state.denom or x.new(dfdx:size()):zero()
-
-    state.t = state.t + 1
-    
-    -- Decay the first and second moment running average coefficient
-    state.m:mul(beta1):add(1-beta1, dfdx)
-    state.v:mul(beta2):addcmul(1-beta2, dfdx, dfdx)
-
-    state.denom:copy(state.v):sqrt():add(epsilon)
-
-    local biasCorrection1 = 1 - beta1^state.t
-    local biasCorrection2 = 1 - beta2^state.t
-    local stepSize = lr * math.sqrt(biasCorrection2)/biasCorrection1
-    -- (2) update x
-    x:addcdiv(-stepSize, state.m, state.denom)
-
-    -- return x*, f(x) before optimization
-    return x, {fx}
-end
-
-
-
+require 'interruptable_optimizers'
 
 local adversarial = {}
 adversarial.accs = {}
@@ -174,7 +91,7 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
             if #adversarial.accs > accsInterval then
                 table.remove(adversarial.accs, 1)
             end
-            accAvg = adversarial.mean(adversarial.accs)
+            local accAvg = adversarial.mean(adversarial.accs)
             doTrainD = (accAvg < maxAccuracyD)
             lastAccuracyD = tV
             if doTrainD then
@@ -260,7 +177,7 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
             end
             targets[{{realDataSize+1,thisBatchSize}}]:fill(Y_GENERATOR)
             
-            --optim.sgd(fevalD, parameters_D, OPTSTATE.sgd.D)
+            --interruptableSgd(fevalD, PARAMETERS_D, OPTSTATE.sgd.D)
             --optim.adagrad(fevalD, parameters_D, ADAGRAD_STATE_D)
             --interruptableAdagrad(fevalD, PARAMETERS_D, OPTSTATE.adagrad.D)
             interruptableAdam(fevalD, PARAMETERS_D, OPTSTATE.adam.D)
