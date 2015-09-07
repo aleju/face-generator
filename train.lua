@@ -55,6 +55,7 @@ if OPT.gpu then
     print("<trainer> starting gpu support...")
     require 'cunn'
     cutorch.setDevice(OPT.gpu + 1)
+    cutorch.manualSeed(1)
     print(string.format("<trainer> using gpu device %d", OPT.gpu))
     torch.setdefaulttensortype('torch.CudaTensor')
 else
@@ -106,8 +107,16 @@ else
   -- D
   --------------
   
-  -- scale 32 network
   --[[
+  MODEL_D = nn.Sequential()
+  MODEL_D:add(nn.View(INPUT_SZ))
+  MODEL_D:add(nn.Linear(INPUT_SZ, 1024))
+  MODEL_D:add(nn.PReLU())
+  MODEL_D:add(nn.Linear(1024, 1))
+  MODEL_D:add(nn.Sigmoid())
+  --]]
+  
+  -- scale 32 network
   local branch_conv = nn.Sequential()
   branch_conv:add(nn.SpatialConvolution(OPT.geometry[1], 16, 3, 3, 1, 1, (3-1)/2))
   branch_conv:add(nn.PReLU())
@@ -115,7 +124,7 @@ else
   branch_conv:add(nn.PReLU())
   branch_conv:add(nn.SpatialMaxPooling(2, 2))
   branch_conv:add(nn.View(16 * (1/4) * OPT.geometry[2] * OPT.geometry[3]))
-  branch_conv:add(nn.Dropout())
+  branch_conv:add(nn.Dropout(0.50))
   branch_conv:add(nn.Linear(16 * (1/4) * OPT.geometry[2] * OPT.geometry[3], 128))
   branch_conv:add(nn.PReLU())
   
@@ -123,7 +132,7 @@ else
   branch_dense:add(nn.View(INPUT_SZ))
   branch_dense:add(nn.Linear(INPUT_SZ, 512))
   branch_dense:add(nn.PReLU())
-  branch_dense:add(nn.Dropout())
+  branch_dense:add(nn.Dropout(0.50))
   branch_dense:add(nn.Linear(512, 128))
   branch_dense:add(nn.PReLU())
   
@@ -136,9 +145,9 @@ else
   MODEL_D:add(nn.JoinTable(2))
   MODEL_D:add(nn.Linear(128*2, 128))
   MODEL_D:add(nn.PReLU())
+  MODEL_D:add(nn.Dropout())
   MODEL_D:add(nn.Linear(128, 1))
   MODEL_D:add(nn.Sigmoid())
-  --]]
   
   -- scale 64 network
   --[[
@@ -177,6 +186,7 @@ else
   --]]
   
   -- scale 64 sgd network
+  --[[
   local branch_conv = nn.Sequential()
   branch_conv:add(nn.SpatialConvolution(OPT.geometry[1], 8, 3, 3, 1, 1, (3-1)/2))
   branch_conv:add(nn.PReLU())
@@ -210,6 +220,7 @@ else
   --MODEL_D:add(nn.BatchNormalization(128))
   MODEL_D:add(nn.Linear(128, 1))
   MODEL_D:add(nn.Sigmoid())
+  --]]
   
   --------------
   -- G
@@ -250,11 +261,12 @@ else
       MODEL_G:add(nn.View(OPT.geometry[1], OPT.geometry[2], OPT.geometry[3]))
       --]]
       MODEL_G = nn.Sequential()
-      MODEL_G:add(nn.Linear(OPT.noiseDim, 4096))
+      MODEL_G:add(nn.Linear(OPT.noiseDim, 6500))
       MODEL_G:add(nn.PReLU())
-      MODEL_G:add(nn.Dropout(0.0))
-      --MODEL_G:add(nn.BatchNormalization(4096))
-      MODEL_G:add(nn.Linear(4096, INPUT_SZ))
+      --MODEL_G:add(nn.Dropout())
+      --MODEL_G:add(nn.Linear(256, 4096))
+      --MODEL_G:add(nn.PReLU())
+      MODEL_G:add(nn.Linear(6500, INPUT_SZ))
       MODEL_G:add(nn.Sigmoid())
       MODEL_G:add(nn.View(OPT.geometry[1], OPT.geometry[2], OPT.geometry[3]))
   end
@@ -344,11 +356,12 @@ testLogger = optim.Logger(paths.concat(OPT.save, 'test.log'))
 if OPTSTATE == nil or OPT.rebuildOptstate == 1 then
     OPTSTATE = {
         adagrad = {D = {}, G = {}},
-        adam = {D = {
-            learningRate = 0.001 * 0.95
-        }, G = {
-            learningRate = 0.001
-        }},
+        adam = {
+            --D = {learningRate = 0.0005},
+            --G = {learningRate = 0.0010}
+            D = {},
+            G = {}
+        },
         rmsprop = {D = {}, G = {}},
         sgd = {
             D = {learningRate = OPT.learningRate, momentum = OPT.momentum},
@@ -434,9 +447,37 @@ function visualizeProgress(noiseInputs)
     end
     local semiRandomImagesRefined = createImagesFromNoise(noiseInputs, true, true)
     
+    local sanityTestImage = torch.Tensor(1, OPT.scale, OPT.scale)
+    sanityTestImage:uniform(0.0, 0.50)
+    for i=1,OPT.scale do
+        for j=1,OPT.scale do
+            if i == j then
+                sanityTestImage[1][i][j] = 1.0
+            elseif i % 4 == 0 and j % 4 == 0 then
+                sanityTestImage[1][i][j] = 0.5
+            end
+        end
+    end
+    
+    --[[
+    for i=1,OPT.scale do
+        for j=1,OPT.scale do
+            if i == j then
+                randomImages[300][1][i][j] = 255
+            elseif i % 4 == 0 and j % 4 == 0 then
+                randomImages[300][1][i][j] = 125
+            end
+        end
+    end
+    --]]
+    
+    
     local randomImages = createImages(300, false)
-    local badImages = sortImagesByPrediction(randomImages, true, 50)
-    local goodImages = sortImagesByPrediction(randomImages, false, 50)
+    --randomImages[298] = TRAIN_DATA[2] -- one real face as sanity test
+    randomImages[299] = TRAIN_DATA[3] -- one real face as sanity test
+    randomImages[300] = sanityTestImage -- synthetic non-face as sanity test
+    local badImages, _ = sortImagesByPrediction(randomImages, true, 50)
+    local goodImages, _ = sortImagesByPrediction(randomImages, false, 50)
     
     if OPT.gpu then
         torch.setdefaulttensortype('torch.FloatTensor')
@@ -446,8 +487,8 @@ function visualizeProgress(noiseInputs)
         DISP.image(semiRandomImagesUnrefined, {win=OPT.window, width=OPT.geometry[3]*15, title="semi-random generated images (before G)"})
     end
     DISP.image(semiRandomImagesRefined, {win=OPT.window+1, width=OPT.geometry[3]*15, title="semi-random generated images (after G)"})
-    DISP.image(badImages, {win=OPT.window+2, width=OPT.geometry[3]*15, title="best samples"})
-    DISP.image(goodImages, {win=OPT.window+3, width=OPT.geometry[3]*15, title="worst samples"})
+    DISP.image(goodImages, {win=OPT.window+2, width=OPT.geometry[3]*15, title="best samples (first is best)"})
+    DISP.image(badImages, {win=OPT.window+3, width=OPT.geometry[3]*15, title="worst samples (first is worst)"})
     
     if OPT.gpu then
         torch.setdefaulttensortype('torch.CudaTensor')
@@ -482,7 +523,8 @@ end
 
 -- training loop
 while true do
-    ADVERSARIAL.train(TRAIN_DATA, 0.90, 20) --math.max(10, math.min(1000/OPT.batchSize, 250)))
+    ADVERSARIAL.train(TRAIN_DATA, 1.01, math.max(20, math.min(1000/OPT.batchSize, 250)))
+    --OPTSTATE.adam.G.learningRate = OPTSTATE.adam.G.learningRate * 0.99
 
     if OPT.plot and EPOCH and EPOCH % 1 == 0 then
         visualizeProgress(VIS_NOISE_INPUTS)

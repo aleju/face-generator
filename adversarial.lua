@@ -32,6 +32,8 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
     local doTrainD = true
     local countTrainedD = 0
     local countNotTrainedD = 0
+    local count_lr_increased_D = 0
+    local count_lr_decreased_D = 0
 
     -- do one epoch
     print(string.format("<trainer> Epoch #%d [batchSize = %d]", EPOCH, OPT.batchSize))
@@ -87,6 +89,31 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
             -- Optimize weights of D for this batch?
             confusion_batch_D:updateValids()
             local tV = confusion_batch_D.totalValid
+            
+            -- this keeps the accuracy of D at around 80%
+            --[[
+            if EPOCH > 1 then
+                if tV > 0.95 then
+                    OPTSTATE.adam.D.learningRate = OPTSTATE.adam.D.learningRate * 0.98
+                    count_lr_decreased_D = count_lr_decreased_D + 1
+                    --if EPOCH > 1 then
+                    --    OPTSTATE.adam.G.learningRate = OPTSTATE.adam.G.learningRate * 1.001
+                    --end
+                elseif tV < 0.90 then
+                    OPTSTATE.adam.D.learningRate = OPTSTATE.adam.D.learningRate * 1.02
+                    count_lr_increased_D = count_lr_increased_D + 1
+                    --if EPOCH > 1 then
+                    --    OPTSTATE.adam.G.learningRate = OPTSTATE.adam.G.learningRate * 0.999
+                    --end
+                else
+                    OPTSTATE.adam.D.learningRate = OPTSTATE.adam.D.learningRate * 1.001
+                end
+            end
+            
+            OPTSTATE.adam.D.learningRate = math.max(0.00001, OPTSTATE.adam.D.learningRate)
+            OPTSTATE.adam.D.learningRate = math.min(0.001, OPTSTATE.adam.D.learningRate)
+            --]]
+            
             adversarial.accs[#adversarial.accs+1] = tV
             if #adversarial.accs > accsInterval then
                 table.remove(adversarial.accs, 1)
@@ -211,6 +238,8 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
     print(string.format("<trainer> time required for this epoch = %d s", time))
     print(string.format("<trainer> time to learn 1 sample = %f ms", 1000 * time/dataset:size()))
     print(string.format("<trainer> trained D %d of %d times.", countTrainedD, countTrainedD + countNotTrainedD))
+    --print(string.format("<trainer> adam learning rate D:%.5f | G:%.5f", OPTSTATE.adam.D.learningRate, OPTSTATE.adam.G.learningRate))
+    print(string.format("<trainer> adam learning rate D increased:%d decreased:%d", count_lr_increased_D, count_lr_decreased_D))
 
     -- print confusion matrix
     print("Confusion of normal D:")
