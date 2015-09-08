@@ -18,23 +18,19 @@ OPT = lapp[[
   --saveFreq         (default 10)          save every saveFreq epochs
   -n,--network       (default "")          reload pretrained network
   -p,--plot                                plot while training
-  -r,--learningRate  (default 0.02)        learning rate
-  --forceLearningRate (default -1)
+  --SGD_lr           (default 0.02)        SGD learning rate
   -b,--batchSize     (default 100)         batch size
-  -m,--momentum      (default 0)           momentum, for SGD only
-  --forceMomentum    (default -1)         
-  --GL1              (default 0)           L1 penalty on the weights of G
-  --GL2              (default 0)           L2 penalty on the weights of G
-  --DL1              (default 0)           L1 penalty on the weights of D
-  --DL2              (default 0)           L2 penalty on the weights of D
+  --SGD_momentum     (default 0)           SGD momentum
+  --G_L1             (default 0)           L1 penalty on the weights of G
+  --G_L2             (default 0)           L2 penalty on the weights of G
+  --D_L1             (default 0)           L1 penalty on the weights of D
+  --D_L2             (default 0)           L2 penalty on the weights of D
+  --D_iterations     (default 1)           number of iterations to optimize D for
+  --G_iterations     (default 1)           number of iterations to optimize G for
   -t,--threads       (default 8)           number of threads
   -g,--gpu           (default -1)          gpu to run on (default cpu)
   -d,--noiseDim      (default 256)         dimensionality of noise vector
-  --iterations_D     (default 1)           number of iterations to optimize D for
-  --iterations_G     (default 1)           number of iterations to optimize G for
   -w, --window       (default 3)           window id of sample image
-  --hidden_G         (default 8000)        number of units in hidden layers of G
-  --hidden_D         (default 1600)        number of units in hidden layers of D
   --scale            (default 32)          scale of images to train on
   --autoencoder      (default "")          path to autoencoder to load weights from
   --rebuildOptstate  (default 0)           whether to force a rebuild of the optimizer state
@@ -364,22 +360,10 @@ if OPTSTATE == nil or OPT.rebuildOptstate == 1 then
         },
         rmsprop = {D = {}, G = {}},
         sgd = {
-            D = {learningRate = OPT.learningRate, momentum = OPT.momentum},
-            G = {learningRate = OPT.learningRate, momentum = OPT.momentum}
+            D = {learningRate = OPT.SGD_lr, momentum = OPT.SGD_momentum},
+            G = {learningRate = OPT.SGD_lr, momentum = OPT.SGD_momentum}
         }
     }
-end
-
-if OPT.forceLearningRate >= 0 then
-    print("Forcing learning rate to " .. OPT.forceLearningRate)
-    OPTSTATE.sgd.D.learningRate = OPT.forceLearningRate
-    OPTSTATE.sgd.G.learningRate = OPT.forceLearningRate
-end
-
-if OPT.forceMomentum >= 0 then
-    print("Forcing momentum to " .. OPT.forceMomentum)
-    OPTSTATE.sgd.D.momentum = OPT.forceMomentum
-    OPTSTATE.sgd.G.momentum = OPT.forceMomentum
 end
 
 function createNoiseInputs(N)

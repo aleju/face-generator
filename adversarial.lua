@@ -69,12 +69,12 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
             MODEL_D:backward(inputs, df_do)
 
             -- penalties (L1 and L2):
-            if OPT.DL1 ~= 0 or OPT.DL2 ~= 0 then
+            if OPT.D_L1 ~= 0 or OPT.D_L2 ~= 0 then
                 -- Loss:
-                f = f + OPT.DL1 * torch.norm(PARAMETERS_D ,1)
-                f = f + OPT.DL2 * torch.norm(PARAMETERS_D, 2)^2/2
+                f = f + OPT.D_L1 * torch.norm(PARAMETERS_D ,1)
+                f = f + OPT.D_L2 * torch.norm(PARAMETERS_D, 2)^2/2
                 -- Gradients:
-                GRAD_PARAMETERS_D:add(torch.sign(PARAMETERS_D):mul(OPT.DL1) + PARAMETERS_D:clone():mul(OPT.DL2) )
+                GRAD_PARAMETERS_D:add(torch.sign(PARAMETERS_D):mul(OPT.D_L1) + PARAMETERS_D:clone():mul(OPT.D_L2) )
             end
 
             -- update confusion (add 1 since targets are binary)
@@ -163,12 +163,12 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
             end
 
             -- penalties (L1 and L2):
-            if OPT.GL1 ~= 0 or OPT.GL2 ~= 0 then
+            if OPT.G_L1 ~= 0 or OPT.G_L2 ~= 0 then
                 -- Loss:
-                f = f + OPT.GL1 * torch.norm(PARAMETERS_G, 1)
-                f = f + OPT.GL2 * torch.norm(PARAMETERS_G, 2)^2/2
+                f = f + OPT.G_L1 * torch.norm(PARAMETERS_G, 1)
+                f = f + OPT.G_L2 * torch.norm(PARAMETERS_G, 2)^2/2
                 -- Gradients:
-                GRAD_PARAMETERS_G:add(torch.sign(PARAMETERS_G):mul(OPT.GL2) + PARAMETERS_G:clone():mul(OPT.GL2))
+                GRAD_PARAMETERS_G:add(torch.sign(PARAMETERS_G):mul(OPT.G_L2) + PARAMETERS_G:clone():mul(OPT.G_L2))
             end
 
             return f,GRAD_PARAMETERS_G
@@ -178,7 +178,7 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
         ----------------------------------------------------------------------
         -- (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
         -- Get half a minibatch of real, half fake
-        for k=1, OPT.iterations_D do
+        for k=1, OPT.D_iterations do
             -- (1.1) Real data 
             local inputIdx = 1
             local realDataSize = thisBatchSize / 2
@@ -213,7 +213,7 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
 
         ----------------------------------------------------------------------
         -- (2) Update G network: maximize log(D(G(z)))
-        for k=1, OPT.iterations_G do
+        for k=1, OPT.G_iterations do
             noiseInputs = createNoiseInputs(noiseInputs:size(1))
             targets:fill(Y_NOT_GENERATOR)
             
