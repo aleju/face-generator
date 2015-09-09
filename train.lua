@@ -114,22 +114,20 @@ else
   
   -- scale 32 network
   local branch_conv = nn.Sequential()
-  branch_conv:add(nn.SpatialConvolution(OPT.geometry[1], 16, 3, 3, 1, 1, (3-1)/2))
+  branch_conv:add(nn.SpatialConvolution(OPT.geometry[1], 32, 3, 3, 1, 1, (3-1)/2))
   branch_conv:add(nn.PReLU())
-  branch_conv:add(nn.SpatialConvolution(16, 16, 3, 3, 1, 1, (3-1)/2))
+  branch_conv:add(nn.SpatialConvolution(32, 32, 3, 3, 1, 1, (3-1)/2))
   branch_conv:add(nn.PReLU())
   branch_conv:add(nn.SpatialMaxPooling(2, 2))
-  branch_conv:add(nn.View(16 * (1/4) * OPT.geometry[2] * OPT.geometry[3]))
-  branch_conv:add(nn.Dropout(0.50))
-  branch_conv:add(nn.Linear(16 * (1/4) * OPT.geometry[2] * OPT.geometry[3], 128))
+  branch_conv:add(nn.View(32 * (1/4) * OPT.geometry[2] * OPT.geometry[3]))
+  branch_conv:add(nn.Linear(32 * (1/4) * OPT.geometry[2] * OPT.geometry[3], 1024))
   branch_conv:add(nn.PReLU())
   
   local branch_dense = nn.Sequential()
   branch_dense:add(nn.View(INPUT_SZ))
-  branch_dense:add(nn.Linear(INPUT_SZ, 512))
+  branch_dense:add(nn.Linear(INPUT_SZ, 1024))
   branch_dense:add(nn.PReLU())
-  branch_dense:add(nn.Dropout(0.50))
-  branch_dense:add(nn.Linear(512, 128))
+  branch_dense:add(nn.Linear(1024, 1024))
   branch_dense:add(nn.PReLU())
   
   local concat = nn.ConcatTable()
@@ -139,10 +137,10 @@ else
   MODEL_D = nn.Sequential()
   MODEL_D:add(concat)
   MODEL_D:add(nn.JoinTable(2))
-  MODEL_D:add(nn.Linear(128*2, 128))
+  MODEL_D:add(nn.Linear(1024*2, 512))
   MODEL_D:add(nn.PReLU())
   MODEL_D:add(nn.Dropout())
-  MODEL_D:add(nn.Linear(128, 1))
+  MODEL_D:add(nn.Linear(512, 1))
   MODEL_D:add(nn.Sigmoid())
   
   -- scale 64 network
