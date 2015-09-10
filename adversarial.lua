@@ -39,7 +39,7 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
     print(string.format("<trainer> Epoch #%d [batchSize = %d]", EPOCH, OPT.batchSize))
     for t = 1,N,dataBatchSize do
         local thisBatchSize = math.min(OPT.batchSize, N - t + 1)
-        local inputs = torch.Tensor(thisBatchSize, OPT.geometry[1], OPT.geometry[2], OPT.geometry[3])
+        local inputs = torch.Tensor(thisBatchSize, IMG_DIMENSIONS[1], IMG_DIMENSIONS[2], IMG_DIMENSIONS[3])
         local targets = torch.Tensor(thisBatchSize)
         local noiseInputs = torch.Tensor(thisBatchSize, OPT.noiseDim)
         if thisBatchSize < 4 then
@@ -183,26 +183,19 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
             local inputIdx = 1
             local realDataSize = thisBatchSize / 2
             for i = 1, realDataSize do
-                local idx = math.random(dataset:size())
-                local sample = dataset[idx]
-                --inputs[k] = sample[1]:clone()
-                inputs[inputIdx] = sample:clone()
+                local randomIdx = math.random(dataset:size())
+                inputs[inputIdx] = dataset[randomIdx]:clone()
+                targets[inputIdx] = Y_NOT_GENERATOR
                 inputIdx = inputIdx + 1
             end
-            targets[{{1,realDataSize}}]:fill(Y_NOT_GENERATOR)
 
             -- (1.2) Sampled data
             local samples = createImages(realDataSize, false)
-            --noiseInputs:normal(0.0, 0.35)
-            --local samples = MODEL_AE:forward(noiseInputs[{{dataBatchSize+1,opt.batchSize}}])
-            --samples = MODEL_G:forward(samples)
             for i = 1, realDataSize do
-                --print("t=" .. t .. ", k=" .. k .. ", i=" .. i .. ", inputIdx=" .. inputIdx .. ", #samples=" .. (samples:size(1) .. ", thisBatchSize=" .. thisBatchSize))
-                samples[i]:clone()
                 inputs[inputIdx] = samples[i]:clone()
+                targets[inputIdx] = Y_GENERATOR
                 inputIdx = inputIdx + 1
             end
-            targets[{{realDataSize+1,thisBatchSize}}]:fill(Y_GENERATOR)
             
             --interruptableSgd(fevalD, PARAMETERS_D, OPTSTATE.sgd.D)
             --optim.adagrad(fevalD, parameters_D, ADAGRAD_STATE_D)
@@ -245,7 +238,7 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
     print("Confusion of normal D:")
     print(CONFUSION)
     local tV = CONFUSION.totalValid
-    trainLogger:add{['% mean class accuracy (train set)'] = tV * 100}
+    TRAIN_LOGGER:add{['% mean class accuracy (train set)'] = tV * 100}
     CONFUSION:zero()
 
     -- save/log current net
