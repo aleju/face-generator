@@ -98,8 +98,8 @@ function nn_utils.visualizeProgress(noiseInputs)
         end
     end
     
-    local trainImages = torch.Tensor(50, IMG_DIMENSIONS[1], IMG_DIMENSIONS[2], IMG_DIMENSIONS[3])
-    for i=1,50 do
+    local trainImages = torch.Tensor(300, IMG_DIMENSIONS[1], IMG_DIMENSIONS[2], IMG_DIMENSIONS[3])
+    for i=1,300 do
         trainImages[i] = TRAIN_DATA[i]
     end
     
