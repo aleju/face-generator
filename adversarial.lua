@@ -147,7 +147,7 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
                 samplesAE = MODEL_AE:forward(noiseInputs)
                 samples = MODEL_G:forward(samplesAE)
             else
-                samples = createImagesFromNoise(noiseInputs, false, true)
+                samples = NN_UTILS.createImagesFromNoise(noiseInputs, false, true)
             end
             local outputs = MODEL_D:forward(samples)
             local f = CRITERION:forward(outputs, targets)
@@ -190,7 +190,7 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
             end
 
             -- (1.2) Sampled data
-            local samples = createImages(realDataSize, false)
+            local samples = NN_UTILS.createImages(realDataSize, false)
             for i = 1, realDataSize do
                 inputs[inputIdx] = samples[i]:clone()
                 targets[inputIdx] = Y_GENERATOR
@@ -207,7 +207,7 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
         ----------------------------------------------------------------------
         -- (2) Update G network: maximize log(D(G(z)))
         for k=1, OPT.G_iterations do
-            noiseInputs = createNoiseInputs(noiseInputs:size(1))
+            noiseInputs = NN_UTILS.createNoiseInputs(noiseInputs:size(1))
             targets:fill(Y_NOT_GENERATOR)
             
             --optim.sgd(fevalG_on_D, parameters_G, OPTSTATE.sgd.G)

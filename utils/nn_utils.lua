@@ -51,7 +51,7 @@ function nn_utils.createImagesFromNoise(noiseInputs, outputAsList, refineWithG)
 end
 
 function nn_utils.createImages(N, outputAsList, refineWithG)
-    return nn_utils.createImagesFromNoise(createNoiseInputs(N), outputAsList, refineWithG)
+    return nn_utils.createImagesFromNoise(nn_utils.createNoiseInputs(N), outputAsList, refineWithG)
 end
 
 function nn_utils.sortImagesByPrediction(images, ascending, nbMaxOut)
@@ -98,12 +98,12 @@ function nn_utils.visualizeProgress(noiseInputs)
         end
     end
     
-    local trainImages = torch.Tensor(300, IMG_DIMENSIONS[1], IMG_DIMENSIONS[2], IMG_DIMENSIONS[3])
-    for i=1,300 do
+    local trainImages = torch.Tensor(100, IMG_DIMENSIONS[1], IMG_DIMENSIONS[2], IMG_DIMENSIONS[3])
+    for i=1,100 do
         trainImages[i] = TRAIN_DATA[i]
     end
     
-    local randomImages = createImages(300, false)
+    local randomImages = nn_utils.createImages(300, false)
     randomImages[299] = TRAIN_DATA[3] -- one real face as sanity test
     randomImages[300] = sanityTestImage -- synthetic non-face as sanity test
     local badImages, _ = nn_utils.sortImagesByPrediction(randomImages, true, 50)

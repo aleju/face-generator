@@ -9,7 +9,7 @@ ok, DISP = pcall(require, 'display')
 if not ok then print('display not found. unable to plot') end
 ADVERSARIAL = require 'adversarial'
 DATASET = require 'dataset'
-NN_UTILS = require 'nn_utils'
+NN_UTILS = require 'utils.nn_utils'
 
 ----------------------------------------------------------------------
 -- parse command-line options
@@ -125,6 +125,7 @@ function main()
             left:add(nn.View(INPUT_SZ))
             local right = nn.Sequential()
             right:add(nn.View(INPUT_SZ))
+            --[[
             right:add(nn.Linear(INPUT_SZ, 1024))
             right:add(nn.PReLU())
             right:add(nn.BatchNormalization(1024))
@@ -132,8 +133,13 @@ function main()
             right:add(nn.PReLU())
             right:add(nn.BatchNormalization(1024))
             right:add(nn.Linear(1024, INPUT_SZ))
+            --]]
+            right:add(nn.Linear(INPUT_SZ, 4096))
+            right:add(nn.PReLU())
+            right:add(nn.Linear(4096, INPUT_SZ))
             right:add(nn.Tanh())
             right:add(nn.MulConstant(0.25))
+            
 
             local concat = nn.ConcatTable()
             concat:add(left)
@@ -245,7 +251,7 @@ function main()
     end
 
     EPOCH = 1
-    VIS_NOISE_INPUTS = createNoiseInputs(100)
+    VIS_NOISE_INPUTS = NN_UTILS.createNoiseInputs(100)
     if OPT.plot then
         NN_UTILS.visualizeProgress(VIS_NOISE_INPUTS)
     end
