@@ -114,6 +114,10 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
             OPTSTATE.adam.D.learningRate = math.min(0.001, OPTSTATE.adam.D.learningRate)
             --]]
             
+            if OPT.D_clamp ~= 0 then
+                GRAD_PARAMETERS_D:clamp((-1)*OPT.D_clamp, OPT.D_clamp)
+            end
+            
             adversarial.accs[#adversarial.accs+1] = tV
             if #adversarial.accs > accsInterval then
                 table.remove(adversarial.accs, 1)
@@ -169,6 +173,10 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
                 f = f + OPT.G_L2 * torch.norm(PARAMETERS_G, 2)^2/2
                 -- Gradients:
                 GRAD_PARAMETERS_G:add(torch.sign(PARAMETERS_G):mul(OPT.G_L2) + PARAMETERS_G:clone():mul(OPT.G_L2))
+            end
+
+            if OPT.G_clamp ~= 0 then
+                GRAD_PARAMETERS_G:clamp((-1)*OPT.G_clamp, OPT.G_clamp)
             end
 
             return f,GRAD_PARAMETERS_G

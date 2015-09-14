@@ -26,18 +26,20 @@ OPT = lapp[[
   --G_adam_lr        (default -1)          Adam learning rate for G (-1 is automatic)
   --D_adam_lr        (default -1)          Adam learning rate for D (-1 is automatic)
   --G_L1             (default 0)           L1 penalty on the weights of G
-  --G_L2             (default 0)           L2 penalty on the weights of G
+  --G_L2             (default 0.000001)    L2 penalty on the weights of G
   --D_L1             (default 0)           L1 penalty on the weights of D
-  --D_L2             (default 0)           L2 penalty on the weights of D
+  --D_L2             (default 0.0001)      L2 penalty on the weights of D
   --D_iterations     (default 1)           number of iterations to optimize D for
   --G_iterations     (default 1)           number of iterations to optimize G for
-  --D_maxAcc         (default 1.01)        stop training of D roughly around that accuracy level
+  --D_maxAcc         (default 0.99)        stop training of D roughly around that accuracy level
+  --D_clamp          (default 1)           To which value to clamp D's gradients (e.g. 5 means -5 to +5, 0 is off)
+  --G_clamp          (default 5)           To which value to clamp G's gradients (e.g. 5 means -5 to +5, 0 is off)
   -t,--threads       (default 8)           number of threads
   -g,--gpu           (default -1)          gpu to run on (default cpu)
   -d,--noiseDim      (default 256)         dimensionality of noise vector
-  -w, --window       (default 3)           window id of sample image
+  -w, --window       (default 3)           ID of the first plotting window, will also use some window-ids beyond that
   --scale            (default 32)          scale of images to train on
-  --autoencoder      (default "")          path to autoencoder to load weights from
+  --autoencoder      (default "")          path to autoencoder to load (optional)
   --rebuildOptstate                        force rebuild of the optimizer state even when loading from save
 ]]
 
@@ -69,7 +71,6 @@ Y_GENERATOR = 0
 Y_NOT_GENERATOR = 1
 IMG_DIMENSIONS = {1, OPT.scale, OPT.scale} -- axis of images: 3 channels, <scale> height, <scale> width
 INPUT_SZ = IMG_DIMENSIONS[1] * IMG_DIMENSIONS[2] * IMG_DIMENSIONS[3] -- size in values/pixels per input image (channels*height*width)
-
 
 function main()
     ----------------------------------------------------------------------
@@ -224,7 +225,7 @@ function main()
 
     -- create training set
     print('Loading training dataset...')
-    TRAIN_DATA = DATASET.loadImages(1, 8192+2048)
+    TRAIN_DATA = DATASET.loadImages(1, 12000)
     ----------------------------------------------------------------------
 
     -- this matrix records the current confusion across classes
