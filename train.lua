@@ -66,10 +66,11 @@ else
 end
 
 -- possible output of disciminator
+-- used for confusion matrix
 CLASSES = {"0", "1"}
 Y_GENERATOR = 0
 Y_NOT_GENERATOR = 1
-IMG_DIMENSIONS = {1, OPT.scale, OPT.scale} -- axis of images: 3 channels, <scale> height, <scale> width
+IMG_DIMENSIONS = {1, OPT.scale, OPT.scale} -- axis of images: 1 channels, <scale> height, <scale> width
 INPUT_SZ = IMG_DIMENSIONS[1] * IMG_DIMENSIONS[2] * IMG_DIMENSIONS[3] -- size in values/pixels per input image (channels*height*width)
 
 function main()
@@ -88,6 +89,8 @@ function main()
         --------------
         -- D
         --------------
+        -- One branch with convolutions, one with dense layers
+        -- merge them at the end
         local branch_conv = nn.Sequential()
         branch_conv:add(nn.SpatialConvolution(IMG_DIMENSIONS[1], 32, 3, 3, 1, 1, (3-1)/2))
         branch_conv:add(nn.PReLU())
@@ -122,34 +125,28 @@ function main()
         -- G
         --------------
         if OPT.autoencoder ~= "" then
+            -- Merge of autoencoder and G
+            -- Autoencoder generates images, G tries to generate refined versions
+            -- Concat layer then merges both
             local left = nn.Sequential()
             left:add(nn.View(INPUT_SZ))
             local right = nn.Sequential()
             right:add(nn.View(INPUT_SZ))
-            --[[
-            right:add(nn.Linear(INPUT_SZ, 1024))
-            right:add(nn.PReLU())
-            right:add(nn.BatchNormalization(1024))
-            right:add(nn.Linear(1024, 1024))
-            right:add(nn.PReLU())
-            right:add(nn.BatchNormalization(1024))
-            right:add(nn.Linear(1024, INPUT_SZ))
-            --]]
             right:add(nn.Linear(INPUT_SZ, 4096))
             right:add(nn.PReLU())
             right:add(nn.Linear(4096, INPUT_SZ))
             right:add(nn.Tanh())
-            right:add(nn.MulConstant(0.25))
-            
+            right:add(nn.MulConstant(0.25)) -- Limit the output to -0.25 to +0.25 (refine)
 
             local concat = nn.ConcatTable()
             concat:add(left)
             concat:add(right)
             MODEL_G = nn.Sequential()
             MODEL_G:add(concat)
-            MODEL_G:add(nn.CAddTable())
+            MODEL_G:add(nn.CAddTable()) -- add refined version to original
             MODEL_G:add(nn.View(IMG_DIMENSIONS[1], IMG_DIMENSIONS[2], IMG_DIMENSIONS[3]))
         else
+            -- No autoencoder chosen, just build a standard G
             MODEL_G = nn.Sequential()
             MODEL_G:add(nn.Linear(OPT.noiseDim, 4096))
             MODEL_G:add(nn.PReLU())
@@ -162,6 +159,7 @@ function main()
         NN_UTILS.initializeWeights(MODEL_G)
     end
 
+    -- if we use an autoencoder then initialize it here
     if OPT.autoencoder == "" then
         print("[INFO] No Autoencoder network specified, will not use an autoencoder.")
     else
@@ -176,6 +174,8 @@ function main()
         MODEL_AE:add(nn.Sigmoid())
         MODEL_AE:add(nn.View(IMG_DIMENSIONS[1], IMG_DIMENSIONS[2], IMG_DIMENSIONS[3]))
 
+        -- extract the decoder part from the autoencoder and set the weights of MODEL_AE
+        -- to the ones of the decoder
         local mapping = {{1,6+1}, {3,6+3}, {5,6+5}}
         for i=1, #mapping do
             print(string.format("Loading AE layer %d from autoencoder layer %d ...", mapping[i][1], mapping[i][2]))
@@ -251,13 +251,15 @@ function main()
         if OPT.G_adam_lr ~= -1 then OPTSTATE.adam.G["learningRate"] = OPT.G_adam_lr end
     end
 
-    EPOCH = 1
+    -- Visualize initially, before the first epoch (usually just white noise, more if
+    -- the networks were loaded from file)
     VIS_NOISE_INPUTS = NN_UTILS.createNoiseInputs(100)
     if OPT.plot then
         NN_UTILS.visualizeProgress(VIS_NOISE_INPUTS)
     end
 
     -- training loop
+    EPOCH = 1
     while true do
         ADVERSARIAL.train(TRAIN_DATA, OPT.D_maxAcc, math.max(20, math.min(1000/OPT.batchSize, 250)))
         --OPTSTATE.adam.G.learningRate = OPTSTATE.adam.G.learningRate * 0.99
@@ -271,4 +273,5 @@ function main()
     end
 end
 
+--------------------------------------
 main()

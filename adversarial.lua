@@ -6,7 +6,11 @@ require 'pl'
 require 'interruptable_optimizers'
 
 local adversarial = {}
+
+-- this variable will save the accuracy values of D
 adversarial.accs = {}
+
+-- function to calculate the mean of a list of numbers
 function adversarial.mean(t)
     local sum = 0
     local count = 0
@@ -21,13 +25,15 @@ function adversarial.mean(t)
     return (sum / count)
 end
 
--- training function
+-- main training function
 function adversarial.train(dataset, maxAccuracyD, accsInterval)
     EPOCH = EPOCH or 1
     --local N = N or dataset:size()
-    local N = dataset:size()
-    local dataBatchSize = OPT.batchSize / 2
+    local N = dataset:size() -- size of dataset
+    local dataBatchSize = OPT.batchSize / 2 -- size of a half-batch for D or G
     local time = sys.clock()
+    
+    -- variables to track D's accuracy
     local lastAccuracyD = 0.0
     local doTrainD = true
     local countTrainedD = 0
@@ -36,19 +42,30 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
     local count_lr_decreased_D = 0
 
     -- do one epoch
+    -- While this function is structured like one that picks example batches in consecutive order,
+    -- in reality the examples (per batch) will be picked randomly
     print(string.format("<trainer> Epoch #%d [batchSize = %d]", EPOCH, OPT.batchSize))
     for t = 1,N,dataBatchSize do
+        -- size of this batch, will usually be dataBatchSize but can be lower at the end
         local thisBatchSize = math.min(OPT.batchSize, N - t + 1)
+        
+        -- Inputs for D, either original or generated images
         local inputs = torch.Tensor(thisBatchSize, IMG_DIMENSIONS[1], IMG_DIMENSIONS[2], IMG_DIMENSIONS[3])
+        
+        -- target y-values
         local targets = torch.Tensor(thisBatchSize)
+        
+        -- tensor to use for noise for G
         local noiseInputs = torch.Tensor(thisBatchSize, OPT.noiseDim)
+        
+        -- this script currently can't handle small sized batches
         if thisBatchSize < 4 then
-            print(string.format("[INFO] skipping batch at t=%d, because its size is less than 2", thisBatchSize))
+            print(string.format("[INFO] skipping batch at t=%d, because its size is less than 4", thisBatchSize))
             break
         end
 
         ----------------------------------------------------------------------
-        -- create closure to evaluate f(X) and df/dX of discriminator
+        -- create closure to evaluate f(X) and df/dX of D
         local fevalD = function(x)
             collectgarbage()
             local confusion_batch_D = optim.ConfusionMatrix(CLASSES)
@@ -86,7 +103,13 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
                 --print("outputs[i][1]:" .. (outputs[i][1]) .. ", c: " .. c ..", targets[i]+1:" .. (targets[i]+1))
             end
 
-            -- Optimize weights of D for this batch?
+            -- Clamp D's gradients
+            -- This helps a bit against D suddenly giving up (only outputting y=1 or y=0)
+            if OPT.D_clamp ~= 0 then
+                GRAD_PARAMETERS_D:clamp((-1)*OPT.D_clamp, OPT.D_clamp)
+            end
+
+            -- Calculate accuracy of D on this batch
             confusion_batch_D:updateValids()
             local tV = confusion_batch_D.totalValid
             
@@ -114,15 +137,19 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
             OPTSTATE.adam.D.learningRate = math.min(0.001, OPTSTATE.adam.D.learningRate)
             --]]
             
-            if OPT.D_clamp ~= 0 then
-                GRAD_PARAMETERS_D:clamp((-1)*OPT.D_clamp, OPT.D_clamp)
-            end
-            
+            -- Add this batch's accuracy to the history of D's accuracies
+            -- Also, keep that history to a fixed size
             adversarial.accs[#adversarial.accs+1] = tV
             if #adversarial.accs > accsInterval then
                 table.remove(adversarial.accs, 1)
             end
+            
+            -- Mean accuracy of D over the last couple of batches
             local accAvg = adversarial.mean(adversarial.accs)
+            
+            -- We will only train D if its mean accuracy over the last couple of batches
+            -- was below the defined maximum (maxAccuracyD). This protects a bit against
+            -- G generating garbage.
             doTrainD = (accAvg < maxAccuracyD)
             lastAccuracyD = tV
             if doTrainD then
@@ -130,6 +157,9 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
                 return f,GRAD_PARAMETERS_D
             else
                 countNotTrainedD = countNotTrainedD + 1
+                
+                -- The interruptable* Optimizers dont train when false is returned
+                -- Maybe that would be equivalent to just returning 0 for all gradients?
                 return false,false
             end
         end
