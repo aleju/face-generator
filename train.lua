@@ -19,6 +19,7 @@ OPT = lapp[[
   --saveFreq         (default 10)          save every saveFreq epochs
   -n,--network       (default "")          reload pretrained network
   -p,--plot                                plot while training
+  --N_epoch          (default -1)          Number of examples per epoch (-1 means all)
   --G_SGD_lr         (default 0.02)        SGD learning rate for G
   --G_SGD_momentum   (default 0)           SGD momentum for G
   --D_SGD_lr         (default 0.02)        SGD learning rate for D
@@ -43,14 +44,11 @@ OPT = lapp[[
   --rebuildOptstate                        force rebuild of the optimizer state even when loading from save
 ]]
 
+-- GPU, seed, threads
 if OPT.gpu < 0 or OPT.gpu > 3 then OPT.gpu = false end
-print(OPT)
-
--- fix seed
 torch.manualSeed(1)
-
--- threads
 torch.setnumthreads(OPT.threads)
+print(OPT)
 print('<torch> set nb of threads to ' .. torch.getnumthreads())
 
 -- run on gpu if chosen
@@ -65,12 +63,12 @@ else
     torch.setdefaulttensortype('torch.FloatTensor')
 end
 
--- possible output of disciminator
--- used for confusion matrix
-CLASSES = {"0", "1"}
-Y_GENERATOR = 0
-Y_NOT_GENERATOR = 1
-IMG_DIMENSIONS = {1, OPT.scale, OPT.scale} -- axis of images: 1 channels, <scale> height, <scale> width
+
+
+CLASSES = {"0", "1"} -- possible output of disciminator, used for confusion matrix
+Y_GENERATOR = 0 -- Y=Image was created by generator
+Y_NOT_GENERATOR = 1 -- Y=Image was from training dataset
+IMG_DIMENSIONS = {1, OPT.scale, OPT.scale} -- axis of images: 1 or 3 channels, <scale> px height, <scale> px width
 INPUT_SZ = IMG_DIMENSIONS[1] * IMG_DIMENSIONS[2] * IMG_DIMENSIONS[3] -- size in values/pixels per input image (channels*height*width)
 
 function main()

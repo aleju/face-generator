@@ -28,8 +28,10 @@ end
 -- main training function
 function adversarial.train(dataset, maxAccuracyD, accsInterval)
     EPOCH = EPOCH or 1
-    --local N = N or dataset:size()
-    local N = dataset:size() -- size of dataset
+    local N_epoch = OPT.N_epoch
+    if N_epoch <= 0 then
+        N_epoch = dataset:size()
+    end
     local dataBatchSize = OPT.batchSize / 2 -- size of a half-batch for D or G
     local time = sys.clock()
     
@@ -45,9 +47,9 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
     -- While this function is structured like one that picks example batches in consecutive order,
     -- in reality the examples (per batch) will be picked randomly
     print(string.format("<trainer> Epoch #%d [batchSize = %d]", EPOCH, OPT.batchSize))
-    for t = 1,N,dataBatchSize do
+    for t = 1,N_epoch,dataBatchSize do
         -- size of this batch, will usually be dataBatchSize but can be lower at the end
-        local thisBatchSize = math.min(OPT.batchSize, N - t + 1)
+        local thisBatchSize = math.min(OPT.batchSize, N_epoch - t + 1)
         
         -- Inputs for D, either original or generated images
         local inputs = torch.Tensor(thisBatchSize, IMG_DIMENSIONS[1], IMG_DIMENSIONS[2], IMG_DIMENSIONS[3])
@@ -256,18 +258,18 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
         end
 
         -- display progress
-        xlua.progress(t, dataset:size())
+        xlua.progress(t, N_epoch)
     end -- end for loop over dataset
 
     -- fill out progress bar completely,
     -- for some reason that doesn't happen in the previous loop
     -- probably because it progresses to t instead of t+dataBatchSize
-    xlua.progress(dataset:size(), dataset:size())
+    xlua.progress(N_epoch, N_epoch)
 
     -- time taken
     time = sys.clock() - time
     print(string.format("<trainer> time required for this epoch = %d s", time))
-    print(string.format("<trainer> time to learn 1 sample = %f ms", 1000 * time/dataset:size()))
+    print(string.format("<trainer> time to learn 1 sample = %f ms", 1000 * time/N_epoch))
     print(string.format("<trainer> trained D %d of %d times.", countTrainedD, countTrainedD + countNotTrainedD))
     --print(string.format("<trainer> adam learning rate D:%.5f | G:%.5f", OPTSTATE.adam.D.learningRate, OPTSTATE.adam.G.learningRate))
     print(string.format("<trainer> adam learning rate D increased:%d decreased:%d", count_lr_increased_D, count_lr_decreased_D))
