@@ -2,25 +2,36 @@ require 'torch'
 
 local nn_utils = {}
 
-function nn_utils.setWeights(weights, std)
+-- Sets the weights of a layer to random values within a range.
+-- @param weights The weights module to change, e.g. mlp.modules[1].weight.
+-- @param range Range for the new values (single number, e.g. 0.005)
+function nn_utils.setWeights(weights, range)
     weights:randn(weights:size())
-    weights:mul(std)
+    weights:mul(range)
 end
 
-function nn_utils.initializeWeights(model, stdWeights, stdBias)
-    stdWeights = stdWeights or 0.005
-    stdBias = stdBias or 0.001
+-- Initializes all weights of a multi layer network.
+-- @param model The nn.Sequential() model with one or more layers
+-- @param rangeWeights A range for the new weights values (single number, e.g. 0.005)
+-- @param rangeBias A range for the new bias values (single number, e.g. 0.005)
+function nn_utils.initializeWeights(model, rangeWeights, rangeBias)
+    rangeWeights = rangeWeights or 0.005
+    rangeBias = rangeBias or 0.001
     
     for m = 1, #model.modules do
         if model.modules[m].weight then
-            nn_utils.setWeights(model.modules[m].weight, stdWeights)
+            nn_utils.setWeights(model.modules[m].weight, rangeWeights)
         end
         if model.modules[m].bias then
-            nn_utils.setWeights(model.modules[m].bias, stdBias)
+            nn_utils.setWeights(model.modules[m].bias, rangeBias)
         end
     end
 end
 
+-- Creates a tensor of N vectors, each of dimension OPT.noiseDim with random values
+-- between -1 and +1.
+-- @param N Number of vectors to generate
+-- @returns Tensor of shape (N, OPT.noiseDim)
 function nn_utils.createNoiseInputs(N)
     local noiseInputs = torch.Tensor(N, OPT.noiseDim)
     --noiseInputs:normal(0.0, 0.35)
@@ -28,6 +39,11 @@ function nn_utils.createNoiseInputs(N)
     return noiseInputs
 end
 
+-- Feeds noise vectors into G or AE+G and returns the result.
+-- @param noiseInputs Tensor from createNoiseInputs()
+-- @param outputAsList Whether to return the images as one list or as a tensor.
+-- @param refineWithG Whether to allow AE+G or just AE (if AE was defined)
+-- @returns Either list of images (as returned by G/AE) or tensor of images
 function nn_utils.createImagesFromNoise(noiseInputs, outputAsList, refineWithG)
     local images
     if MODEL_AE then
