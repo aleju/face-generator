@@ -1,5 +1,4 @@
 require 'torch'
-require 'nn'
 require 'optim'
 require 'image'
 --require 'datasets'
@@ -60,6 +59,7 @@ if OPT.gpu then
     print(string.format("<trainer> using gpu device %d", OPT.gpu))
     torch.setdefaulttensortype('torch.CudaTensor')
 else
+    require 'nn'
     torch.setdefaulttensortype('torch.FloatTensor')
 end
 
@@ -71,6 +71,7 @@ Y_NOT_GENERATOR = 1 -- Y=Image was from training dataset
 IMG_DIMENSIONS = {1, OPT.scale, OPT.scale} -- axis of images: 1 or 3 channels, <scale> px height, <scale> px width
 INPUT_SZ = IMG_DIMENSIONS[1] * IMG_DIMENSIONS[2] * IMG_DIMENSIONS[3] -- size in values/pixels per input image (channels*height*width)
 
+-- Main function, creates/loads networks, loads dataset, starts training
 function main()
     ----------------------------------------------------------------------
     -- Load / Define network
@@ -203,6 +204,7 @@ function main()
     print('Generator network:')
     print(MODEL_G)
 
+    -- transfer models to GPU
     if OPT.gpu then
         print("Copying model to gpu...")
         if MODEL_AE then
