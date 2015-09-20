@@ -1,3 +1,9 @@
+-- The following optimizers are exactly identical to the optimizers in the optim package, 
+-- except that the ones here can be stopped from within the called opfunc().
+-- If opfunc() returns false instead of gradients, the optimizers will not perform a learning
+-- step. This can be useful in the GAN architecture to prevent one side from outracing the other.
+
+-- Adagrad
 function interruptableAdagrad(opfunc, x, config, state)
     -- (0) get/update state
     if config == nil and state == nil then
@@ -12,9 +18,13 @@ function interruptableAdagrad(opfunc, x, config, state)
 
     -- (1) evaluate f(x) and df/dx
     local fx,dfdx = opfunc(x)
+    
+    -------------------
+    -- this was changed
     if fx == false then
         return false
     end
+    -------------------
 
     -- (3) learning rate decay (annealing)
     local clr = lr / (1 + nevals*lrd)
@@ -35,7 +45,7 @@ function interruptableAdagrad(opfunc, x, config, state)
     return x,{fx}
 end
 
-
+-- Adam
 function interruptableAdam(opfunc, x, config, state)
     -- (0) get/update state
     local config = config or {}
@@ -48,9 +58,13 @@ function interruptableAdam(opfunc, x, config, state)
 
     -- (1) evaluate f(x) and df/dx
     local fx, dfdx = opfunc(x)
+    
+    -------------------
+    -- this was changed
     if fx == false then
         return false
     end
+    -------------------
 
     -- Initialization
     state.t = state.t or 0
@@ -79,7 +93,7 @@ function interruptableAdam(opfunc, x, config, state)
     return x, {fx}
 end
 
-
+-- SGD
 function interruptableSgd(opfunc, x, config, state)
    -- (0) get/update state
    local config = config or {}
@@ -98,9 +112,13 @@ function interruptableSgd(opfunc, x, config, state)
 
    -- (1) evaluate f(x) and df/dx
    local fx,dfdx = opfunc(x)
+   
+   -------------------
+   -- this was changed
    if fx == false then
       return false
    end
+   -------------------
 
    -- (2) weight decay with single or individual parameters
    if wd ~= 0 then
