@@ -41,11 +41,12 @@ OPT = lapp[[
   --scale            (default 32)          scale of images to train on
   --autoencoder      (default "")          path to autoencoder to load (optional)
   --rebuildOptstate                        force rebuild of the optimizer state even when loading from save
+  --seed             (default 1)           Seed to use for the RNG
 ]]
 
 -- GPU, seed, threads
 if OPT.gpu < 0 or OPT.gpu > 3 then OPT.gpu = false end
-torch.manualSeed(1)
+torch.manualSeed(OPT.seed)
 torch.setnumthreads(OPT.threads)
 print(OPT)
 print('<torch> set nb of threads to ' .. torch.getnumthreads())
