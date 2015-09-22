@@ -168,9 +168,9 @@ function nn_utils.visualizeProgress(noiseInputs)
 
     -- Ugly switch to Float Tensors
     -- Otherwise Display crashes
-    if OPT.gpu then
-        torch.setdefaulttensortype('torch.FloatTensor')
-    end
+    --if OPT.gpu then
+    --    torch.setdefaulttensortype('torch.FloatTensor')
+    --end
 
     if semiRandomImagesUnrefined then
         DISP.image(semiRandomImagesUnrefined, {win=OPT.window, width=IMG_DIMENSIONS[3]*15, title="semi-random generated images (before G)"})
@@ -181,11 +181,11 @@ function nn_utils.visualizeProgress(noiseInputs)
     DISP.image(trainImages, {win=OPT.window+4, width=IMG_DIMENSIONS[3]*15, title="original images from training set"})
     
     -- and switch back to Cuda Tensors (if GPU mode is enabled)
-    if OPT.gpu then
-        torch.setdefaulttensortype('torch.CudaTensor')
-    else
-        torch.setdefaulttensortype('torch.FloatTensor')
-    end
+    --if OPT.gpu then
+    --    torch.setdefaulttensortype('torch.CudaTensor')
+    --else
+    --    torch.setdefaulttensortype('torch.FloatTensor')
+    --end
     
     -- reactivate dropout
     nn_utils.switchToTrainingMode()
