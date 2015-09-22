@@ -1,9 +1,10 @@
 require 'torch'
-require 'nn'
+--require 'nn'
 --require 'cunn'
 require 'optim'
 require 'pl'
 require 'interruptable_optimizers'
+require 'image'
 
 local adversarial = {}
 
@@ -42,6 +43,10 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
     local countNotTrainedD = 0
     local count_lr_increased_D = 0
     local count_lr_decreased_D = 0
+    --local last_D_input = 
+    samples = nil
+
+    local batchIdx = 0
 
     -- do one epoch
     -- While this function is structured like one that picks example batches in consecutive order,
@@ -57,12 +62,17 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
         -- target y-values
         local targets = torch.Tensor(thisBatchSize)
         
+        if OPT.gpu then
+            inputs = inputs:cuda()
+            targets = targets:cuda()
+        end
+        
         -- tensor to use for noise for G
         local noiseInputs = torch.Tensor(thisBatchSize, OPT.noiseDim)
         
         -- this script currently can't handle small sized batches
         if thisBatchSize < 4 then
-            print(string.format("[INFO] skipping batch at t=%d, because its size is less than 4", thisBatchSize))
+            print(string.format("[INFO] skipping batch at t=%d, because its size is less than 4", t))
             break
         end
 
@@ -90,7 +100,7 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
             -- penalties (L1 and L2):
             if OPT.D_L1 ~= 0 or OPT.D_L2 ~= 0 then
                 -- Loss:
-                f = f + OPT.D_L1 * torch.norm(PARAMETERS_D ,1)
+                f = f + OPT.D_L1 * torch.norm(PARAMETERS_D, 1)
                 f = f + OPT.D_L2 * torch.norm(PARAMETERS_D, 2)^2/2
                 -- Gradients:
                 GRAD_PARAMETERS_D:add(torch.sign(PARAMETERS_D):mul(OPT.D_L1) + PARAMETERS_D:clone():mul(OPT.D_L2) )
@@ -177,7 +187,7 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
             GRAD_PARAMETERS_G:zero() -- reset gradients
 
             -- forward pass
-            local samples
+            --local samples
             local samplesAE
             if MODEL_AE then
                 samplesAE = MODEL_AE:forward(noiseInputs)
@@ -237,10 +247,25 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
                 inputIdx = inputIdx + 1
             end
             
-            --interruptableSgd(fevalD, PARAMETERS_D, OPTSTATE.sgd.D)
-            --optim.adagrad(fevalD, parameters_D, ADAGRAD_STATE_D)
-            --interruptableAdagrad(fevalD, PARAMETERS_D, OPTSTATE.adagrad.D)
-            interruptableAdam(fevalD, PARAMETERS_D, OPTSTATE.adam.D)
+            inputs:cuda()
+            
+            if OPT.D_optmethod == "sgd" then
+                interruptableSgd(fevalD, PARAMETERS_D, OPTSTATE.sgd.D)
+            elseif OPT.D_optmethod == "adagrad" then
+                interruptableAdagrad(fevalD, PARAMETERS_D, OPTSTATE.adagrad.D)
+            elseif OPT.D_optmethod == "adam" then
+                interruptableAdam(fevalD, PARAMETERS_D, OPTSTATE.adam.D)
+            else
+                print("[Warning] Unknown optimizer method chosen for D.")
+            end
+            
+            --[[
+            if batchIdx % 4 == 0 then
+                interruptableAdagrad(fevalD, PARAMETERS_D, OPTSTATE.adagrad.D)
+            else
+                interruptableAdam(fevalD, PARAMETERS_D, OPTSTATE.adam.D)
+            end
+            --]]
             --optim.rmsprop(fevalD, PARAMETERS_D, OPTSTATE.rmsprop.D)
         end -- end for K
 
@@ -252,13 +277,31 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
             
             --optim.sgd(fevalG_on_D, parameters_G, OPTSTATE.sgd.G)
             --optim.adagrad(fevalG_on_D, parameters_G, ADAGRAD_STATE_G)
-            --interruptableAdagrad(fevalG_on_D, PARAMETERS_G, OPTSTATE.adagrad.G)
-            interruptableAdam(fevalG_on_D, PARAMETERS_G, OPTSTATE.adam.G)
+            if OPT.G_optmethod == "adagrad" then
+                interruptableSgd(fevalG_on_D, PARAMETERS_G, OPTSTATE.sgd.G)
+            elseif OPT.G_optmethod == "adagrad" then
+                interruptableAdagrad(fevalG_on_D, PARAMETERS_G, OPTSTATE.adagrad.G)
+            elseif OPT.G_optmethod == "adam" then
+                interruptableAdam(fevalG_on_D, PARAMETERS_G, OPTSTATE.adam.G)
+            else
+                print("[Warning] Unknown optimizer method chosen for G.")
+            end
+            
+            --[[
+            if batchIdx % 4 == 0 then
+                interruptableAdagrad(fevalG_on_D, PARAMETERS_G, OPTSTATE.adagrad.G)
+            else
+                interruptableAdam(fevalG_on_D, PARAMETERS_G, OPTSTATE.adam.G)
+            end
+            --]]
             --optim.rmsprop(fevalG_on_D, PARAMETERS_G, OPTSTATE.rmsprop.G)
         end
 
+        batchIdx = batchIdx + 1
         -- display progress
         xlua.progress(t, N_epoch)
+        
+        adversarial.visualizeNetwork(MODEL_D)
     end -- end for loop over dataset
 
     -- fill out progress bar completely,
@@ -296,6 +339,66 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
     EPOCH = EPOCH + 1
 
     return tV
+end
+
+function adversarial.visualizeNetwork(net)
+    local minOutputs = 150
+
+    --if OPT.gpu then
+    --    torch.setdefaulttensortype('torch.FloatTensor')
+    --end
+    
+    netvis_windows = netvis_windows or {}
+    local modules = net:listModules()
+    local winIdx = 1
+    -- last module seems to have no output?
+    for i=1,(#modules-1) do
+        local t = torch.type(modules[i])
+        -- necessary, otherwise :get(i).output can somehow cause nil's
+        --if t == 'nn.SpatialConvolution' or t == 'nn.Linear' then
+            local output = modules[i].output
+            local shape = output:size()
+            local nbValues = shape[2]
+            local showTensor = nil
+            --print('i=', i, 't=', t, 'shape=', shape, '#shape=', #shape)
+            if t == 'nn.SpatialConvolution' then
+                showTensor = output[1]
+            elseif t == 'nn.Linear' then
+                if nbValues >= minOutputs and nbValues >= minOutputs then
+                    local nbRows = torch.floor(torch.sqrt(nbValues))
+                    while nbValues % nbRows ~= 0 and nbRows < nbValues do
+                        nbRows = nbRows + 1
+                    end
+                    
+                    if nbRows >= nbValues then
+                        showTensor = nil
+                    else
+                        showTensor = output[1]:view(nbRows, nbValues / nbRows)
+                    end
+                    --print('nbRows='..nbRows..', nbValues='..nbValues..', nbValues/nbRows=' .. (nbValues / nbRows))
+                end
+            end
+        --end
+        
+        -- Is it a tensor? Linear(X, 1) is not and wont be displayed.
+        -- (Similarly probably for e.g. Linear(X, 10).)
+        --if #shape > 1 then
+        if showTensor ~= nil then
+            netvis_windows[winIdx] = image.display{
+                image=showTensor, zoom=1, nrow=32,
+                min=-1, max=1,
+                win=netvis_windows[winIdx], legend=t .. ' (#' .. i .. ')',
+                padding=1
+            }
+            winIdx = winIdx + 1
+        end
+    end
+    
+    --if OPT.gpu then
+    --    torch.setdefaulttensortype('torch.CudaTensor')
+    --else
+    --    torch.setdefaulttensortype('torch.FloatTensor')
+    --end
 end
 
 return adversarial
