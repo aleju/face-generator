@@ -56,12 +56,10 @@ if OPT.gpu then
     print("<trainer> starting gpu support...")
     require 'cunn'
     cutorch.setDevice(OPT.gpu + 1)
-    cutorch.manualSeed(1)
+    cutorch.manualSeed(OPT.seed)
     print(string.format("<trainer> using gpu device %d", OPT.gpu))
-    torch.setdefaulttensortype('torch.CudaTensor')
 else
     require 'nn'
-    torch.setdefaulttensortype('torch.FloatTensor')
 end
 
 
