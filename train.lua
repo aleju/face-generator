@@ -13,7 +13,7 @@ NN_UTILS = require 'utils.nn_utils'
 ----------------------------------------------------------------------
 -- parse command-line options
 OPT = lapp[[
-  -b,--batchSize     (default 100)         batch size
+  -b,--batchSize     (default 16)          batch size
   -s,--save          (default "logs")      subdirectory to save logs
   --saveFreq         (default 10)          save every saveFreq epochs
   -n,--network       (default "")          reload pretrained network
@@ -25,15 +25,17 @@ OPT = lapp[[
   --D_SGD_momentum   (default 0)           SGD momentum for D
   --G_adam_lr        (default -1)          Adam learning rate for G (-1 is automatic)
   --D_adam_lr        (default -1)          Adam learning rate for D (-1 is automatic)
-  --G_L1             (default 0)           L1 penalty on the weights of G
-  --G_L2             (default 0.000001)    L2 penalty on the weights of G
-  --D_L1             (default 0)           L1 penalty on the weights of D
-  --D_L2             (default 0.0001)      L2 penalty on the weights of D
+  --G_L1             (default 0e-6)        L1 penalty on the weights of G
+  --G_L2             (default 0e-6)        L2 penalty on the weights of G
+  --D_L1             (default 1e-7)        L1 penalty on the weights of D
+  --D_L2             (default 0e-4)        L2 penalty on the weights of D
   --D_iterations     (default 1)           number of iterations to optimize D for
   --G_iterations     (default 1)           number of iterations to optimize G for
-  --D_maxAcc         (default 0.99)        stop training of D roughly around that accuracy level
+  --D_maxAcc         (default 1.01)        stop training of D roughly around that accuracy level
   --D_clamp          (default 1)           To which value to clamp D's gradients (e.g. 5 means -5 to +5, 0 is off)
   --G_clamp          (default 5)           To which value to clamp G's gradients (e.g. 5 means -5 to +5, 0 is off)
+  --D_optmethod      (default "adam")      adam|adagrad
+  --G_optmethod      (default "adam")      adam|adagrad
   -t,--threads       (default 8)           number of threads
   -g,--gpu           (default -1)          gpu to run on (default cpu)
   -d,--noiseDim      (default 256)         dimensionality of noise vector
