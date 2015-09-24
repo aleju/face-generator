@@ -41,10 +41,9 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
     local doTrainD = true
     local countTrainedD = 0
     local countNotTrainedD = 0
-    local count_lr_increased_D = 0
-    local count_lr_decreased_D = 0
-    --local last_D_input = 
-    samples = nil
+    local countLrIncreasedD = 0
+    local countLrDecreasedD = 0 
+    --samples = nil
 
     local batchIdx = 0
 
@@ -76,12 +75,15 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
             break
         end
 
+
         ----------------------------------------------------------------------
+        -- feval for D
         -- create closure to evaluate f(X) and df/dX of D
+        ----------------------------------------------------------------------
         local fevalD = function(x)
             collectgarbage()
-            local confusion_batch_D = optim.ConfusionMatrix(CLASSES)
-            confusion_batch_D:zero()
+            local confusionBatchD = optim.ConfusionMatrix(CLASSES)
+            confusionBatchD:zero()
 
             if x ~= PARAMETERS_D then -- get new parameters
                 PARAMETERS_D:copy(x)
@@ -107,12 +109,11 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
             end
 
             -- update confusion (add 1 since targets are binary)
-            for i = 1,thisBatchSize do
+            for i = 1,outputs:size(1) do
                 local c
                 if outputs[i][1] > 0.5 then c = 2 else c = 1 end
                 CONFUSION:add(c, targets[i]+1)
-                confusion_batch_D:add(c, targets[i]+1)
-                --print("outputs[i][1]:" .. (outputs[i][1]) .. ", c: " .. c ..", targets[i]+1:" .. (targets[i]+1))
+                confusionBatchD:add(c, targets[i]+1)
             end
 
             -- Clamp D's gradients
@@ -122,21 +123,22 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
             end
 
             -- Calculate accuracy of D on this batch
-            confusion_batch_D:updateValids()
-            local tV = confusion_batch_D.totalValid
+            confusionBatchD:updateValids()
+            local tV = confusionBatchD.totalValid
             
-            -- this keeps the accuracy of D at around 80%
+            -- This is old code to keep the accuracy of D at around 90% by changing the learning
+            -- rate. Didn't work very well, D's learning rate often ended up at basically 0.
             --[[
             if EPOCH > 1 then
                 if tV > 0.95 then
                     OPTSTATE.adam.D.learningRate = OPTSTATE.adam.D.learningRate * 0.98
-                    count_lr_decreased_D = count_lr_decreased_D + 1
+                    countLrDecreasedD = countLrDecreased_D + 1
                     --if EPOCH > 1 then
                     --    OPTSTATE.adam.G.learningRate = OPTSTATE.adam.G.learningRate * 1.001
                     --end
                 elseif tV < 0.90 then
                     OPTSTATE.adam.D.learningRate = OPTSTATE.adam.D.learningRate * 1.02
-                    count_lr_increased_D = count_lr_increased_D + 1
+                    countLrIncreasedD = countLrIncreased_D + 1
                     --if EPOCH > 1 then
                     --    OPTSTATE.adam.G.learningRate = OPTSTATE.adam.G.learningRate * 0.999
                     --end
@@ -175,9 +177,13 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
                 return false,false
             end
         end
+        ----------------------------------------------------------------------
+        
 
         ----------------------------------------------------------------------
-        -- create closure to evaluate f(X) and df/dX of generator 
+        -- feval for G
+        -- create closure to evaluate f(X) and df/dX of generator
+        ----------------------------------------------------------------------
         local fevalG_on_D = function(x)
             collectgarbage()
             if x ~= PARAMETERS_G then -- get new parameters
@@ -223,11 +229,14 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
 
             return f,GRAD_PARAMETERS_G
         end
-        ------------------- end of eval functions ---------------------------
+        ----------------------------------------------------------------------
+        
 
         ----------------------------------------------------------------------
+        -- Train D
         -- (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
         -- Get half a minibatch of real, half fake
+        ----------------------------------------------------------------------
         for k=1, OPT.D_iterations do
             -- (1.1) Real data 
             local inputIdx = 1
@@ -257,15 +266,16 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
                 print("[Warning] Unknown optimizer method chosen for D.")
             end
         end -- end for K
+        ----------------------------------------------------------------------
 
         ----------------------------------------------------------------------
+        -- Train G
         -- (2) Update G network: maximize log(D(G(z)))
+        ----------------------------------------------------------------------
         for k=1, OPT.G_iterations do
             noiseInputs = NN_UTILS.createNoiseInputs(noiseInputs:size(1))
             targets:fill(Y_NOT_GENERATOR)
             
-            --optim.sgd(fevalG_on_D, parameters_G, OPTSTATE.sgd.G)
-            --optim.adagrad(fevalG_on_D, parameters_G, ADAGRAD_STATE_G)
             if OPT.G_optmethod == "adagrad" then
                 interruptableSgd(fevalG_on_D, PARAMETERS_G, OPTSTATE.sgd.G)
             elseif OPT.G_optmethod == "adagrad" then
@@ -275,16 +285,8 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
             else
                 print("[Warning] Unknown optimizer method chosen for G.")
             end
-            
-            --[[
-            if batchIdx % 4 == 0 then
-                interruptableAdagrad(fevalG_on_D, PARAMETERS_G, OPTSTATE.adagrad.G)
-            else
-                interruptableAdam(fevalG_on_D, PARAMETERS_G, OPTSTATE.adam.G)
-            end
-            --]]
-            --optim.rmsprop(fevalG_on_D, PARAMETERS_G, OPTSTATE.rmsprop.G)
         end
+        ----------------------------------------------------------------------
 
         batchIdx = batchIdx + 1
         
@@ -331,49 +333,59 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
     return tV
 end
 
-function adversarial.visualizeNetwork(net)
-    local minOutputs = 150
+-- Show the activity of a network in windows (i.e. windows full of blinking dots).
+-- The windows will automatically be reused.
+-- Only the activity of the layer types nn.SpatialConvolution and nn.Linear will be shown.
+-- Linear layers must have a minimum size to be shown (i.e. to not show the tiny output layers).
+--
+-- NOTE: This function can only visualize one network proberly while the program runs.
+-- I.e. you can't call this function to show network A and then another time to show network B,
+-- because the function tries to reuse windows and that will not work correctly in such a case.
+--
+-- @param net The network to visualize.
+-- @param minOutputs Minimum (output) size of a linear layer to be shown.
+function adversarial.visualizeNetwork(net, minOutputs)
+    if minOutputs == nil then
+        minOutputs = 150
+    end
 
     --if OPT.gpu then
     --    torch.setdefaulttensortype('torch.FloatTensor')
     --end
     
+    -- (Global) Table to save the window ids in, so that we can reuse them between calls.
     netvis_windows = netvis_windows or {}
+    
     local modules = net:listModules()
     local winIdx = 1
     -- last module seems to have no output?
     for i=1,(#modules-1) do
         local t = torch.type(modules[i])
-        -- necessary, otherwise :get(i).output can somehow cause nil's
-        --if t == 'nn.SpatialConvolution' or t == 'nn.Linear' then
-            local showTensor = nil
-            --print('i=', i, 't=', t, 'shape=', shape, '#shape=', #shape)
-            if t == 'nn.SpatialConvolution' then
-                showTensor = modules[i].output[1]
-            elseif t == 'nn.Linear' then
-                local output = modules[i].output
-                local shape = output:size()
-                local nbValues = shape[2]
-                
-                if nbValues >= minOutputs and nbValues >= minOutputs then
-                    local nbRows = torch.floor(torch.sqrt(nbValues))
-                    while nbValues % nbRows ~= 0 and nbRows < nbValues do
-                        nbRows = nbRows + 1
-                    end
-                    
-                    if nbRows >= nbValues then
-                        showTensor = nil
-                    else
-                        showTensor = output[1]:view(nbRows, nbValues / nbRows)
-                    end
-                    --print('nbRows='..nbRows..', nbValues='..nbValues..', nbValues/nbRows=' .. (nbValues / nbRows))
+        local showTensor = nil
+        -- This function only shows the activity of 2d convolutions and linear layers
+        if t == 'nn.SpatialConvolution' then
+            showTensor = modules[i].output[1]
+        elseif t == 'nn.Linear' then
+            local output = modules[i].output
+            local shape = output:size()
+            local nbValues = shape[2]
+            
+            if nbValues >= minOutputs and nbValues >= minOutputs then
+                local nbRows = torch.floor(torch.sqrt(nbValues))
+                while nbValues % nbRows ~= 0 and nbRows < nbValues do
+                    nbRows = nbRows + 1
                 end
+                
+                if nbRows >= nbValues then
+                    showTensor = nil
+                else
+                    showTensor = output[1]:view(nbRows, nbValues / nbRows)
+                end
+                --print('nbRows='..nbRows..', nbValues='..nbValues..', nbValues/nbRows=' .. (nbValues / nbRows))
             end
-        --end
+        end
         
-        -- Is it a tensor? Linear(X, 1) is not and wont be displayed.
-        -- (Similarly probably for e.g. Linear(X, 10).)
-        --if #shape > 1 then
+        -- 
         if showTensor ~= nil then
             netvis_windows[winIdx] = image.display{
                 image=showTensor, zoom=1, nrow=32,
