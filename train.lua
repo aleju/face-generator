@@ -44,6 +44,7 @@ OPT = lapp[[
   --autoencoder      (default "")          path to autoencoder to load (optional)
   --rebuildOptstate                        force rebuild of the optimizer state even when loading from save
   --seed             (default 1)           Seed to use for the RNG
+  --weightsVisFreq   (default 0)           How often to update the windows showing the weights (only if >0; implies starting with qlua if >0)
 ]]
 
 -- GPU, seed, threads
@@ -85,6 +86,7 @@ function main()
         MODEL_D = tmp.D
         MODEL_G = tmp.G
         OPTSTATE = tmp.optstate
+        EPOCH = tmp.epoch
     else
         --------------
         -- D
@@ -226,7 +228,7 @@ function main()
 
     -- create training set
     print('Loading training dataset...')
-    TRAIN_DATA = DATASET.loadImages(1, 12000)
+    TRAIN_DATA = DATASET.loadImages(1, 120)
     ----------------------------------------------------------------------
 
     -- this matrix records the current confusion across classes

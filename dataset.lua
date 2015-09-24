@@ -4,8 +4,8 @@ require 'paths'
 
 local dataset = {}
 
-dataset.dirs = {} -- '/media/aj/grab/ml/datasets/lfwcrop_grey/faces'
-dataset.fileExtension = "" --'pgm'
+dataset.dirs = {}
+dataset.fileExtension = ""
 
 dataset.originalScale = 64
 dataset.scale = 32
@@ -31,30 +31,24 @@ function dataset.loadImages(startAt, count)
     local endBefore = startAt + count
 
     local images = dataset.loadImagesFromDirs(dataset.dirs, dataset.fileExtension, startAt, count, false)
-    local data = torch.FloatTensor(#images, dataset.nbChannels, dataset.originalScale, dataset.originalScale)
+    local data = torch.FloatTensor(#images, dataset.nbChannels, dataset.scale, dataset.scale)
     for i=1, #images do
-        data[i] = images[i]
+        data[i] = image.scale(images[i], dataset.scale, dataset.scale)
     end
-
-    local N = data:size(1)
-    print(string.format('<dataset> loaded %d examples', N))
 
     local result = {}
-    --result.data = data
-    result.scaled = torch.Tensor(N, dataset.nbChannels, dataset.scale, dataset.scale)
-
-    for i=1, N do
-        result.scaled[i] = image.scale(data[i], dataset.scale, dataset.scale)
-    end
-
-
+    result.data = data
+    local N = data:size(1)
+    
     function result:size()
         return N
     end
 
     setmetatable(result, {__index = function(self, index)
-        return self.scaled[index]
+        return self.data[index]
     end})
+
+    print(string.format('<dataset> loaded %d examples', N))
 
     return result
 end

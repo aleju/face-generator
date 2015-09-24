@@ -70,7 +70,7 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
         -- tensor to use for noise for G
         local noiseInputs = torch.Tensor(thisBatchSize, OPT.noiseDim)
         
-        -- this script currently can't handle small sized batches
+        -- batch size of 4 is the minimum (for D 1 real, one fake; for G two fakes)
         if thisBatchSize < 4 then
             print(string.format("[INFO] skipping batch at t=%d, because its size is less than 4", t))
             break
@@ -247,8 +247,6 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
                 inputIdx = inputIdx + 1
             end
             
-            inputs:cuda()
-            
             if OPT.D_optmethod == "sgd" then
                 interruptableSgd(fevalD, PARAMETERS_D, OPTSTATE.sgd.D)
             elseif OPT.D_optmethod == "adagrad" then
@@ -258,15 +256,6 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
             else
                 print("[Warning] Unknown optimizer method chosen for D.")
             end
-            
-            --[[
-            if batchIdx % 4 == 0 then
-                interruptableAdagrad(fevalD, PARAMETERS_D, OPTSTATE.adagrad.D)
-            else
-                interruptableAdam(fevalD, PARAMETERS_D, OPTSTATE.adam.D)
-            end
-            --]]
-            --optim.rmsprop(fevalD, PARAMETERS_D, OPTSTATE.rmsprop.D)
         end -- end for K
 
         ----------------------------------------------------------------------
@@ -298,24 +287,25 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
         end
 
         batchIdx = batchIdx + 1
-        -- display progress
-        xlua.progress(t, N_epoch)
         
-        adversarial.visualizeNetwork(MODEL_D)
+        -- display progress
+        xlua.progress(t + thisBatchSize, N_epoch)
+        
+        -- show weights
+        if OPT.weightsVisFreq > 0 and batchIdx % OPT.weightsVisFreq == 0 then
+            adversarial.visualizeNetwork(MODEL_D)
+        end
     end -- end for loop over dataset
-
-    -- fill out progress bar completely,
-    -- for some reason that doesn't happen in the previous loop
-    -- probably because it progresses to t instead of t+dataBatchSize
-    xlua.progress(N_epoch, N_epoch)
 
     -- time taken
     time = sys.clock() - time
     print(string.format("<trainer> time required for this epoch = %d s", time))
     print(string.format("<trainer> time to learn 1 sample = %f ms", 1000 * time/N_epoch))
     print(string.format("<trainer> trained D %d of %d times.", countTrainedD, countTrainedD + countNotTrainedD))
+    
+    -- old code for self-adjusting learning rate
     --print(string.format("<trainer> adam learning rate D:%.5f | G:%.5f", OPTSTATE.adam.D.learningRate, OPTSTATE.adam.G.learningRate))
-    print(string.format("<trainer> adam learning rate D increased:%d decreased:%d", count_lr_increased_D, count_lr_decreased_D))
+    --print(string.format("<trainer> adam learning rate D increased:%d decreased:%d", count_lr_increased_D, count_lr_decreased_D))
 
     -- print confusion matrix
     print("Confusion of normal D:")
@@ -356,14 +346,15 @@ function adversarial.visualizeNetwork(net)
         local t = torch.type(modules[i])
         -- necessary, otherwise :get(i).output can somehow cause nil's
         --if t == 'nn.SpatialConvolution' or t == 'nn.Linear' then
-            local output = modules[i].output
-            local shape = output:size()
-            local nbValues = shape[2]
             local showTensor = nil
             --print('i=', i, 't=', t, 'shape=', shape, '#shape=', #shape)
             if t == 'nn.SpatialConvolution' then
-                showTensor = output[1]
+                showTensor = modules[i].output[1]
             elseif t == 'nn.Linear' then
+                local output = modules[i].output
+                local shape = output:size()
+                local nbValues = shape[2]
+                
                 if nbValues >= minOutputs and nbValues >= minOutputs then
                     local nbRows = torch.floor(torch.sqrt(nbValues))
                     while nbValues % nbRows ~= 0 and nbRows < nbValues do
