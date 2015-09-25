@@ -13,11 +13,11 @@ NN_UTILS = require 'utils.nn_utils'
 ----------------------------------------------------------------------
 -- parse command-line options
 OPT = lapp[[
-  -b,--batchSize     (default 16)          batch size
-  -s,--save          (default "logs")      subdirectory to save logs
+  --batchSize        (default 16)          batch size
+  --save             (default "logs")      subdirectory to save logs
   --saveFreq         (default 10)          save every saveFreq epochs
-  -n,--network       (default "")          reload pretrained network
-  -p,--plot                                plot while training
+  --network          (default "")          reload pretrained network
+  --plot                                   plot while training
   --N_epoch          (default -1)          Number of examples per epoch (-1 means all)
   --G_SGD_lr         (default 0.02)        SGD learning rate for G
   --G_SGD_momentum   (default 0)           SGD momentum for G
@@ -36,10 +36,10 @@ OPT = lapp[[
   --G_clamp          (default 5)           To which value to clamp G's gradients (e.g. 5 means -5 to +5, 0 is off)
   --D_optmethod      (default "adam")      adam|adagrad
   --G_optmethod      (default "adam")      adam|adagrad
-  -t,--threads       (default 8)           number of threads
-  -g,--gpu           (default -1)          gpu to run on (default cpu)
-  -d,--noiseDim      (default 256)         dimensionality of noise vector
-  -w, --window       (default 3)           ID of the first plotting window, will also use some window-ids beyond that
+  --threads          (default 8)           number of threads
+  --gpu              (default -1)          gpu to run on (default cpu)
+  --noiseDim         (default 256)         dimensionality of noise vector
+  --window           (default 3)           ID of the first plotting window, will also use some window-ids beyond that
   --scale            (default 32)          scale of images to train on
   --autoencoder      (default "")          path to autoencoder to load (optional)
   --rebuildOptstate                        force rebuild of the optimizer state even when loading from save
@@ -57,6 +57,7 @@ print('<torch> set nb of threads to ' .. torch.getnumthreads())
 -- run on gpu if chosen
 if OPT.gpu then
     print("<trainer> starting gpu support...")
+    require 'cutorch'
     require 'cunn'
     cutorch.setDevice(OPT.gpu + 1)
     cutorch.manualSeed(OPT.seed)
@@ -82,7 +83,7 @@ function main()
     -- or initialize them new
     if OPT.network ~= "" then
         print(string.format("<trainer> reloading previously trained network: %s", OPT.network))
-        tmp = torch.load(OPT.network)
+        local tmp = torch.load(OPT.network)
         MODEL_D = tmp.D
         MODEL_G = tmp.G
         OPTSTATE = tmp.optstate

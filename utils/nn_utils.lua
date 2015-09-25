@@ -79,7 +79,7 @@ end
 -- Descending order starts at y=1 (Y_NOT_GENERATOR) and ends with y=0 (Y_GENERATOR).
 -- Therefore, in case of descending order, images for which D is very certain that they are real
 -- come first and images that seem to be fake (according to D) come last.
--- @param images The images to sort.
+-- @param images The images to sort. (Tensor)
 -- @param ascending If true then images that seem most fake to D are placed at the start of the list.
 --                  Otherwise the list starts with probably real images.
 -- @param nbMaxOut Sets how many images may be returned max (cant be more images than provided).
