@@ -36,7 +36,11 @@ function nn_utils.createNoiseInputs(N)
     local noiseInputs = torch.Tensor(N, OPT.noiseDim)
     --noiseInputs:normal(0.0, 0.35)
     noiseInputs:uniform(-1.0, 1.0)
-    return noiseInputs
+    --if OPT.gpu then
+    --    return noiseInputs:cuda()
+    --else
+        return noiseInputs
+    --end
 end
 
 -- Feeds noise vectors into G or AE+G and returns the result.
@@ -58,7 +62,7 @@ function nn_utils.createImagesFromNoise(noiseInputs, outputAsList, refineWithG)
     if outputAsList then
         local imagesList = {}
         for i=1, images:size(1) do
-            imagesList[#imagesList+1] = images[i]:float()
+            imagesList[#imagesList+1] = images[i] --:float()
         end
         return imagesList
     else
@@ -207,6 +211,26 @@ function nn_utils.switchToEvaluationMode()
     end
     MODEL_G:evaluate()
     MODEL_D:evaluate()
+end
+
+function nn_utils.deactivateCuda(net)
+    local newNet = net:clone()
+    newNet:float()
+    if torch.type(newNet:get(1)) == 'nn.Copy' then
+        return newNet:get(2)
+    else
+        return newNet
+    end
+end
+
+function nn_utils.activateCuda(net)
+    local newNet = net:clone()
+    newNet:cuda()
+    local tmp = nn.Sequential()
+    tmp:add(nn.Copy('torch.FloatTensor', 'torch.CudaTensor'))
+    tmp:add(newNet)
+    tmp:add(nn.Copy('torch.CudaTensor', 'torch.FloatTensor'))
+    return tmp
 end
 
 return nn_utils

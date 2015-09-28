@@ -13,11 +13,11 @@ NN_UTILS = require 'utils.nn_utils'
 ----------------------------------------------------------------------
 -- parse command-line options
 OPT = lapp[[
-  --batchSize        (default 16)          batch size
+  --batchSize        (default 16)          batch size (must be even, must be >= 4)
   --save             (default "logs")      subdirectory to save logs
-  --saveFreq         (default 10)          save every saveFreq epochs
+  --saveFreq         (default 30)          save every saveFreq epochs
   --network          (default "")          reload pretrained network
-  --plot                                   plot while training
+  --plot                                   Whether to plot while training
   --N_epoch          (default -1)          Number of examples per epoch (-1 means all)
   --G_SGD_lr         (default 0.02)        SGD learning rate for G
   --G_SGD_momentum   (default 0)           SGD momentum for G
@@ -29,23 +29,30 @@ OPT = lapp[[
   --G_L2             (default 0e-6)        L2 penalty on the weights of G
   --D_L1             (default 1e-7)        L1 penalty on the weights of D
   --D_L2             (default 0e-4)        L2 penalty on the weights of D
-  --D_iterations     (default 1)           number of iterations to optimize D for
-  --G_iterations     (default 1)           number of iterations to optimize G for
+  --D_iterations     (default 1)           How often to optimize D per batch
+  --G_iterations     (default 1)           How often to optimize G per batch
   --D_maxAcc         (default 1.01)        stop training of D roughly around that accuracy level
   --D_clamp          (default 1)           To which value to clamp D's gradients (e.g. 5 means -5 to +5, 0 is off)
   --G_clamp          (default 5)           To which value to clamp G's gradients (e.g. 5 means -5 to +5, 0 is off)
-  --D_optmethod      (default "adam")      adam|adagrad
-  --G_optmethod      (default "adam")      adam|adagrad
+  --D_optmethod      (default "adam")      Optimizer to use for D, either "sgd" or "adam" or "adagrad"
+  --G_optmethod      (default "adam")      Optimizer to use for D, either "sgd" or "adam" or "adagrad"
   --threads          (default 8)           number of threads
-  --gpu              (default -1)          gpu to run on (default cpu)
+  --gpu              (default -1)          gpu to run on (0-4 or -1 for cpu)
   --noiseDim         (default 256)         dimensionality of noise vector
   --window           (default 3)           ID of the first plotting window, will also use some window-ids beyond that
-  --scale            (default 32)          scale of images to train on
+  --scale            (default 32)          scale of images to train on (height, width)
   --autoencoder      (default "")          path to autoencoder to load (optional)
   --rebuildOptstate                        force rebuild of the optimizer state even when loading from save
   --seed             (default 1)           Seed to use for the RNG
   --weightsVisFreq   (default 0)           How often to update the windows showing the weights (only if >0; implies starting with qlua if >0)
+  --grayscale                              Whether to activate grayscale mode on the images
 ]]
+
+-- check is batch size is valid (x >= 4 and an even number)
+if OPT.batchSize % 2 ~= 0 or OPT.batchSize < 4 then
+    print("[ERROR] batch size must be a multiple of 2 and higher or equal to 4")
+    sys.exit()
+end
 
 -- GPU, seed, threads
 if OPT.gpu < 0 or OPT.gpu > 3 then OPT.gpu = false end
@@ -65,13 +72,13 @@ if OPT.gpu then
 else
     require 'nn'
 end
-
-
+torch.setdefaulttensortype('torch.FloatTensor')
 
 CLASSES = {"0", "1"} -- possible output of disciminator, used for confusion matrix
 Y_GENERATOR = 0 -- Y=Image was created by generator
 Y_NOT_GENERATOR = 1 -- Y=Image was from training dataset
-IMG_DIMENSIONS = {1, OPT.scale, OPT.scale} -- axis of images: 1 or 3 channels, <scale> px height, <scale> px width
+IMG_DIMENSIONS = {3, OPT.scale, OPT.scale} -- axis of images: 1 or 3 channels, <scale> px height, <scale> px width
+if OPT.grayscale then IMG_DIMENSIONS[1] = 1 end
 INPUT_SZ = IMG_DIMENSIONS[1] * IMG_DIMENSIONS[2] * IMG_DIMENSIONS[3] -- size in values/pixels per input image (channels*height*width)
 
 -- Main function, creates/loads networks, loads dataset, starts training
@@ -99,9 +106,13 @@ function main()
         branch_conv:add(nn.PReLU())
         branch_conv:add(nn.SpatialConvolution(32, 32, 3, 3, 1, 1, (3-1)/2))
         branch_conv:add(nn.PReLU())
+        branch_conv:add(nn.SpatialConvolution(32, 64, 3, 3, 1, 1, (3-1)/2))
+        branch_conv:add(nn.PReLU())
+        branch_conv:add(nn.SpatialConvolution(64, 64, 3, 3, 1, 1, (3-1)/2))
+        branch_conv:add(nn.PReLU())
         branch_conv:add(nn.SpatialMaxPooling(2, 2))
-        branch_conv:add(nn.View(32 * (1/4) * INPUT_SZ))
-        branch_conv:add(nn.Linear(32 * (1/4) * INPUT_SZ, 1024))
+        branch_conv:add(nn.View(64 * (1/4) * IMG_DIMENSIONS[2] * IMG_DIMENSIONS[3]))
+        branch_conv:add(nn.Linear(64 * (1/4) * IMG_DIMENSIONS[2] * IMG_DIMENSIONS[3], 1024))
         branch_conv:add(nn.PReLU())
 
         local branch_dense = nn.Sequential()
@@ -135,9 +146,9 @@ function main()
             left:add(nn.View(INPUT_SZ))
             local right = nn.Sequential()
             right:add(nn.View(INPUT_SZ))
-            right:add(nn.Linear(INPUT_SZ, 4096))
+            right:add(nn.Linear(INPUT_SZ, 1024))
             right:add(nn.PReLU())
-            right:add(nn.Linear(4096, INPUT_SZ))
+            right:add(nn.Linear(1024, INPUT_SZ))
             right:add(nn.Tanh())
             right:add(nn.MulConstant(0.25)) -- Limit the output to -0.25 to +0.25 (refine)
 
@@ -151,9 +162,9 @@ function main()
         else
             -- No autoencoder chosen, just build a standard G
             MODEL_G = nn.Sequential()
-            MODEL_G:add(nn.Linear(OPT.noiseDim, 4096))
+            MODEL_G:add(nn.Linear(OPT.noiseDim, 1024))
             MODEL_G:add(nn.PReLU())
-            MODEL_G:add(nn.Linear(4096, INPUT_SZ))
+            MODEL_G:add(nn.Linear(1024, INPUT_SZ))
             MODEL_G:add(nn.Sigmoid())
             MODEL_G:add(nn.View(IMG_DIMENSIONS[1], IMG_DIMENSIONS[2], IMG_DIMENSIONS[3]))
         end
@@ -193,6 +204,12 @@ function main()
         end
     end
 
+    if OPT.gpu then
+        if MODEL_AE then MODEL_AE = NN_UTILS.activateCuda(MODEL_AE) end
+        MODEL_D = NN_UTILS.activateCuda(MODEL_D)
+        MODEL_G = NN_UTILS.activateCuda(MODEL_G)
+    end
+
     -- loss function: negative log-likelihood
     CRITERION = nn.BCECriterion()
 
@@ -209,6 +226,7 @@ function main()
     print(MODEL_G)
 
     -- transfer models to GPU
+    --[[
     if OPT.gpu then
         print("Copying model to gpu...")
         if MODEL_AE then
@@ -216,20 +234,26 @@ function main()
         end
         MODEL_D:cuda()
         MODEL_G:cuda()
+        --CRITERION:cuda()
     end
+    --]]
+    
 
 
     ----------------------------------------------------------------------
     -- get/create dataset
     ----------------------------------------------------------------------
     -- adjust dataset
-    DATASET.setDirs({"/media/aj/grab/ml/datasets/lfwcrop_grey/faces"})
-    DATASET.setFileExtension("pgm")
+    DATASET.setDirs({"/media/aj/grab/ml/datasets/lfwcrop_color/faces"})
+    DATASET.setFileExtension("ppm") -- pgm for lfwcrop_grey
+    --DATASET.setDirs({"/media/aj/grab/ml/datasets/lfwcrop_grey/faces"})
+    --DATASET.setFileExtension("pgm")
     DATASET.setScale(OPT.scale)
+    DATASET.setNbChannels(IMG_DIMENSIONS[1])
 
     -- create training set
     print('Loading training dataset...')
-    TRAIN_DATA = DATASET.loadImages(1, 120)
+    TRAIN_DATA = DATASET.loadImages(1, 99999999)
     ----------------------------------------------------------------------
 
     -- this matrix records the current confusion across classes

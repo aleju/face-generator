@@ -9,7 +9,7 @@ dataset.fileExtension = ""
 
 dataset.originalScale = 64
 dataset.scale = 32
-dataset.nbChannels = 1
+dataset.nbChannels = 3
 
 function dataset.setDirs(dirs)
   dataset.dirs = dirs
@@ -97,8 +97,8 @@ function dataset.loadImagesFromDirs(dirs, ext, startAt, count, doSort)
     -- Go over the file list:
     local images = {}
     for i,file in ipairs(filesExtracted) do
-       -- load each image
-       table.insert(images, image.load(file, dataset.nbChannels, "float"))
+        -- load each image
+        table.insert(images, image.load(file, dataset.nbChannels, "float"))
     end
     
     return images

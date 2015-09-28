@@ -61,10 +61,10 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
         -- target y-values
         local targets = torch.Tensor(thisBatchSize)
         
-        if OPT.gpu then
-            inputs = inputs:cuda()
-            targets = targets:cuda()
-        end
+        --if OPT.gpu then
+        --    inputs = inputs:cuda()
+        --    targets = targets:cuda()
+        --end
         
         -- tensor to use for noise for G
         local noiseInputs = torch.Tensor(thisBatchSize, OPT.noiseDim)
@@ -276,7 +276,7 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
             noiseInputs = NN_UTILS.createNoiseInputs(noiseInputs:size(1))
             targets:fill(Y_NOT_GENERATOR)
             
-            if OPT.G_optmethod == "adagrad" then
+            if OPT.G_optmethod == "sgd" then
                 interruptableSgd(fevalG_on_D, PARAMETERS_G, OPTSTATE.sgd.G)
             elseif OPT.G_optmethod == "adagrad" then
                 interruptableAdagrad(fevalG_on_D, PARAMETERS_G, OPTSTATE.adagrad.G)
@@ -324,7 +324,7 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
             os.execute(string.format("mv %s %s.old", filename, filename))
         end
         print(string.format("<trainer> saving network to %s", filename))
-        torch.save(filename, {D = MODEL_D, G = MODEL_G, opt = OPT, optstate = OPTSTATE})
+        torch.save(filename, {D = NN_UTILS.deactivateCuda(MODEL_D), G = NN_UTILS.deactivateCuda(MODEL_G), opt = OPT}) --, optstate = OPTSTATE})
     end
 
     -- next epoch
