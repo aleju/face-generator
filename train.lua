@@ -18,7 +18,7 @@ OPT = lapp[[
   --saveFreq         (default 30)          save every saveFreq epochs
   --network          (default "")          reload pretrained network
   --plot                                   Whether to plot while training
-  --N_epoch          (default -1)          Number of examples per epoch (-1 means all)
+  --N_epoch          (default 1000)        Number of examples per epoch (-1 means all)
   --G_SGD_lr         (default 0.02)        SGD learning rate for G
   --G_SGD_momentum   (default 0)           SGD momentum for G
   --D_SGD_lr         (default 0.02)        SGD learning rate for D
@@ -27,8 +27,8 @@ OPT = lapp[[
   --D_adam_lr        (default -1)          Adam learning rate for D (-1 is automatic)
   --G_L1             (default 0e-6)        L1 penalty on the weights of G
   --G_L2             (default 0e-6)        L2 penalty on the weights of G
-  --D_L1             (default 1e-7)        L1 penalty on the weights of D
-  --D_L2             (default 0e-4)        L2 penalty on the weights of D
+  --D_L1             (default 0e-7)        L1 penalty on the weights of D
+  --D_L2             (default 1e-4)        L2 penalty on the weights of D
   --D_iterations     (default 1)           How often to optimize D per batch
   --G_iterations     (default 1)           How often to optimize G per batch
   --D_maxAcc         (default 1.01)        stop training of D roughly around that accuracy level
@@ -38,11 +38,10 @@ OPT = lapp[[
   --G_optmethod      (default "adam")      Optimizer to use for D, either "sgd" or "adam" or "adagrad"
   --threads          (default 8)           number of threads
   --gpu              (default -1)          gpu to run on (0-4 or -1 for cpu)
-  --noiseDim         (default 256)         dimensionality of noise vector
+  --noiseDim         (default 100)         dimensionality of noise vector
   --window           (default 3)           ID of the first plotting window, will also use some window-ids beyond that
   --scale            (default 32)          scale of images to train on (height, width)
   --autoencoder      (default "")          path to autoencoder to load (optional)
-  --rebuildOptstate                        force rebuild of the optimizer state even when loading from save
   --seed             (default 1)           Seed to use for the RNG
   --weightsVisFreq   (default 0)           How often to update the windows showing the weights (only if >0; implies starting with qlua if >0)
   --grayscale                              Whether to activate grayscale mode on the images
@@ -93,7 +92,7 @@ function main()
         local tmp = torch.load(OPT.network)
         MODEL_D = tmp.D
         MODEL_G = tmp.G
-        OPTSTATE = tmp.optstate
+        --OPTSTATE = tmp.optstate
         EPOCH = tmp.epoch
     else
         --------------
@@ -101,19 +100,37 @@ function main()
         --------------
         -- One branch with convolutions, one with dense layers
         -- merge them at the end
-        local branch_conv = nn.Sequential()
-        branch_conv:add(nn.SpatialConvolution(IMG_DIMENSIONS[1], 32, 3, 3, 1, 1, (3-1)/2))
-        branch_conv:add(nn.PReLU())
-        branch_conv:add(nn.SpatialConvolution(32, 32, 3, 3, 1, 1, (3-1)/2))
-        branch_conv:add(nn.PReLU())
-        branch_conv:add(nn.SpatialConvolution(32, 64, 3, 3, 1, 1, (3-1)/2))
-        branch_conv:add(nn.PReLU())
-        branch_conv:add(nn.SpatialConvolution(64, 64, 3, 3, 1, 1, (3-1)/2))
-        branch_conv:add(nn.PReLU())
-        branch_conv:add(nn.SpatialMaxPooling(2, 2))
-        branch_conv:add(nn.View(64 * (1/4) * IMG_DIMENSIONS[2] * IMG_DIMENSIONS[3]))
-        branch_conv:add(nn.Linear(64 * (1/4) * IMG_DIMENSIONS[2] * IMG_DIMENSIONS[3], 1024))
-        branch_conv:add(nn.PReLU())
+        --require 'rnn'
+        require 'dpnn'
+        --require 'dp'
+        
+        local branch_conv_fine = nn.Sequential()
+        branch_conv_fine:add(nn.SpatialConvolution(IMG_DIMENSIONS[1], 64, 3, 3, 1, 1, (3-1)/2))
+        branch_conv_fine:add(nn.PReLU())
+        branch_conv_fine:add(nn.SpatialConvolution(64, 64, 3, 3, 1, 1, (3-1)/2))
+        branch_conv_fine:add(nn.PReLU())
+        branch_conv_fine:add(nn.SpatialMaxPooling(2, 2))
+        branch_conv_fine:add(nn.SpatialDropout())
+        branch_conv_fine:add(nn.View(64 * (1/4) * IMG_DIMENSIONS[2] * IMG_DIMENSIONS[3]))
+        branch_conv_fine:add(nn.Linear(64 * (1/4) * IMG_DIMENSIONS[2] * IMG_DIMENSIONS[3], 1024))
+        branch_conv_fine:add(nn.PReLU())
+        branch_conv_fine:add(nn.Dropout())
+        branch_conv_fine:add(nn.Linear(1024, 1024))
+        branch_conv_fine:add(nn.PReLU())
+        
+        local branch_conv_coarse = nn.Sequential()
+        branch_conv_coarse:add(nn.SpatialConvolution(IMG_DIMENSIONS[1], 32, 5, 5, 1, 1, (7-1)/2))
+        branch_conv_coarse:add(nn.PReLU())
+        branch_conv_coarse:add(nn.SpatialConvolution(32, 32, 5, 5, 1, 1, (7-1)/2))
+        branch_conv_coarse:add(nn.PReLU())
+        --branch_conv_coarse:add(nn.SpatialMaxPooling(2, 2))
+        branch_conv_coarse:add(nn.SpatialDropout())
+        branch_conv_coarse:add(nn.View(32 * (4/4) * IMG_DIMENSIONS[2] * IMG_DIMENSIONS[3]))
+        branch_conv_coarse:add(nn.Linear(32 * (4/4) * IMG_DIMENSIONS[2] * IMG_DIMENSIONS[3], 1024))
+        branch_conv_coarse:add(nn.PReLU())
+        branch_conv_coarse:add(nn.Dropout())
+        branch_conv_coarse:add(nn.Linear(1024, 1024))
+        branch_conv_coarse:add(nn.PReLU())
 
         local branch_dense = nn.Sequential()
         branch_dense:add(nn.View(INPUT_SZ))
@@ -123,16 +140,17 @@ function main()
         branch_dense:add(nn.PReLU())
 
         local concat = nn.ConcatTable()
-        concat:add(branch_conv)
+        concat:add(branch_conv_fine)
+        concat:add(branch_conv_coarse)
         concat:add(branch_dense)
 
         MODEL_D = nn.Sequential()
         MODEL_D:add(concat)
         MODEL_D:add(nn.JoinTable(2))
-        MODEL_D:add(nn.Linear(1024*2, 512))
+        MODEL_D:add(nn.Linear(1024*3, 2048))
         MODEL_D:add(nn.PReLU())
         MODEL_D:add(nn.Dropout())
-        MODEL_D:add(nn.Linear(512, 1))
+        MODEL_D:add(nn.Linear(2048, 1))
         MODEL_D:add(nn.Sigmoid())
 
         --------------
@@ -162,9 +180,9 @@ function main()
         else
             -- No autoencoder chosen, just build a standard G
             MODEL_G = nn.Sequential()
-            MODEL_G:add(nn.Linear(OPT.noiseDim, 1024))
+            MODEL_G:add(nn.Linear(OPT.noiseDim, 2048))
             MODEL_G:add(nn.PReLU())
-            MODEL_G:add(nn.Linear(1024, INPUT_SZ))
+            MODEL_G:add(nn.Linear(2048, INPUT_SZ))
             MODEL_G:add(nn.Sigmoid())
             MODEL_G:add(nn.View(IMG_DIMENSIONS[1], IMG_DIMENSIONS[2], IMG_DIMENSIONS[3]))
         end
@@ -225,29 +243,12 @@ function main()
     print('Generator network:')
     print(MODEL_G)
 
-    -- transfer models to GPU
-    --[[
-    if OPT.gpu then
-        print("Copying model to gpu...")
-        if MODEL_AE then
-            MODEL_AE:cuda()
-        end
-        MODEL_D:cuda()
-        MODEL_G:cuda()
-        --CRITERION:cuda()
-    end
-    --]]
-    
-
-
     ----------------------------------------------------------------------
     -- get/create dataset
     ----------------------------------------------------------------------
     -- adjust dataset
     DATASET.setDirs({"/media/aj/grab/ml/datasets/lfwcrop_color/faces"})
     DATASET.setFileExtension("ppm") -- pgm for lfwcrop_grey
-    --DATASET.setDirs({"/media/aj/grab/ml/datasets/lfwcrop_grey/faces"})
-    --DATASET.setFileExtension("pgm")
     DATASET.setScale(OPT.scale)
     DATASET.setNbChannels(IMG_DIMENSIONS[1])
 
@@ -260,24 +261,23 @@ function main()
     CONFUSION = optim.ConfusionMatrix(CLASSES)
 
     -- log results to files
+    -- TODO this doesn't really do anything useful
     TRAIN_LOGGER = optim.Logger(paths.concat(OPT.save, 'train.log'))
     TEST_LOGGER = optim.Logger(paths.concat(OPT.save, 'test.log'))
 
-    -- Set optimizer state if it hasn't been loaded from file
-    if OPTSTATE == nil or OPT.rebuildOptstate then
-        OPTSTATE = {
-            adagrad = {D = {}, G = {}},
-            adam = {D = {}, G = {}},
-            rmsprop = {D = {}, G = {}},
-            sgd = {
-                D = {learningRate = OPT.D_SGD_lr, momentum = OPT.D_SGD_momentum},
-                G = {learningRate = OPT.G_SGD_lr, momentum = OPT.G_SGD_momentum}
-            }
+    -- Set optimizer state
+    OPTSTATE = {
+        adagrad = {D = {}, G = {}},
+        adam = {D = {}, G = {}},
+        rmsprop = {D = {}, G = {}},
+        sgd = {
+            D = {learningRate = OPT.D_SGD_lr, momentum = OPT.D_SGD_momentum},
+            G = {learningRate = OPT.G_SGD_lr, momentum = OPT.G_SGD_momentum}
         }
-        
-        if OPT.D_adam_lr ~= -1 then OPTSTATE.adam.D["learningRate"] = OPT.D_adam_lr end
-        if OPT.G_adam_lr ~= -1 then OPTSTATE.adam.G["learningRate"] = OPT.G_adam_lr end
-    end
+    }
+    
+    if OPT.D_adam_lr ~= -1 then OPTSTATE.adam.D["learningRate"] = OPT.D_adam_lr end
+    if OPT.G_adam_lr ~= -1 then OPTSTATE.adam.G["learningRate"] = OPT.G_adam_lr end
 
     -- Visualize initially, before the first epoch (usually just white noise, more if
     -- the networks were loaded from file)
