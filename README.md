@@ -10,6 +10,10 @@ Note: This project is not fully finished yet, but mostly funtional.
 
 # Example images
 
+![Example faces](images/faces.png?raw=true "Example faces")
+
+Example faces after 1.5 hours of training. 
+
 # Requirements
 
 To run this script optimally you need
@@ -43,6 +47,8 @@ D contains three subnetworks:
 The three networks are concatenated to a vector of size 3*1024, followed by two fully connected layers of size 2048 and a last layer with 1 neuron.
 All activations are PReLUs, except for the last layer, which uses sigmoid. Dropout is used between all fully connected layers. Spatial Dropout (drops out full kernel results) is used at the end of the convolutional layers.
 The architecture is intended to capture the rough structure (via the fully connected subnetwork), as well as fine details (3x3 conv net, e.g. for eyes) and rougher details (5x5 conv net, e.g. for skin).
+
+Training is done with Adam (by default).
 
 # Command Line Parameters
 
