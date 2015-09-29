@@ -1,6 +1,12 @@
 # About
 
-This is a script to generate new images of human faces using the technique of generative adversarial networks (GAN), as described in the paper by [Ian J. Goodfellow](http://arxiv.org/abs/1406.2661). The code is based on a modified version of facebook's [eyescream project](https://github.com/facebook/eyescream).
+This is a script to generate new images of human faces using the technique of generative adversarial networks (GAN), as described in the paper by [Ian J. Goodfellow](http://arxiv.org/abs/1406.2661).
+GANs train two networks at the same time: A Generator (G) that draws/creates new images and a Discriminator (D) that distinguishes between real and fake images. G learns to trick D into thinking that his images are real (i.e. learns to produce good looking images). D learns to prevent getting tricked (i.e. learns what real images look like).
+Ideally you end up with a G that produces beautiful images that look like real ones. On human faces that works reasonably well, probably because they contain a lot of structure (autoencoders work well on them too).
+
+The code of this repository is a modified version of facebook's [eyescream project](https://github.com/facebook/eyescream). It does not use the upscaling feature (laplacian pyramid).
+
+Note: This project is not fully finished yet, but mostly funtional.
 
 # Example images
 
@@ -23,7 +29,20 @@ To train a new model, follow these steps:
 * Download the [lfw cropped dataset](http://conradsanderson.id.au/lfwcrop/). You should chose the colored dataset as you can activate `--grayscale` mode via the command line parameters.
 * Clone the repository.
 * Change in `train.lua` the line `DATASET.setDirs({"/path/to/lfw_cropped"})` to match your dataset's directory.
-* Start the training with the command `th train.lua --gpu=0 --plot`, which will train on the GPU and plot via `display` during the training. You can see the plots by opening `http://localhost:8000`.
+* Start the training with the command `th train.lua --gpu=0 --plot --grayscale`, which will train on grayscale images on the GPU and plot via `display` during the training. You can see the plots by opening `http://localhost:8000`.
+
+# Architecture
+
+G is a very small network which starts (by default) with a 100 dimensional noise vector, followed by one hidden layer of size 2048 (using PReLU activation) and the output layer, which consists of all image pixels (Sigmoid). No dropout is used.
+
+D contains three subnetworks:
+* A fully connected network that works directly on the images (without convolutions). It contains two layers of size 1024.
+* A small convolutional network with two layers of 64 kernels (3x3) feeding into a 1024 fully connected layer.
+* A small convolutional network with two layers of 32 kernels (5x5) feeding into a 1024 fully connected layer.
+
+The three networks are concatenated to a vector of size 3*1024, followed by two fully connected layers of size 2048 and a last layer with 1 neuron.
+All activations are PReLUs, except for the last layer, which uses sigmoid. Dropout is used between all fully connected layers. Spatial Dropout (drops out full kernel results) is used at the end of the convolutional layers.
+The architecture is intended to capture the rough structure (via the fully connected subnetwork), as well as fine details (3x3 conv net, e.g. for eyes) and rougher details (5x5 conv net, e.g. for skin).
 
 # Command Line Parameters
 
