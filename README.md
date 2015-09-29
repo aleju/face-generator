@@ -1,3 +1,5 @@
+Work in Progress.
+
 # About
 
 This is a script to generate new images of human faces using the technique of generative adversarial networks (GAN), as described in the paper by [Ian J. Goodfellow](http://arxiv.org/abs/1406.2661).
@@ -6,13 +8,13 @@ Ideally you end up with a G that produces beautiful images that look like real o
 
 The code of this repository is a modified version of facebook's [eyescream project](https://github.com/facebook/eyescream). It does not use the upscaling feature (laplacian pyramid).
 
-Note: This project is not fully finished yet, but mostly funtional.
-
 # Example images
 
 ![Example faces](images/faces.png?raw=true "Example faces")
 
-Example faces after 1.5 hours of training. 
+Example faces after 1.5 hours of training.
+
+TODO add better image
 
 # Requirements
 
