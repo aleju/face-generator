@@ -11,22 +11,36 @@ dataset.originalScale = 64
 dataset.scale = 32
 dataset.nbChannels = 3
 
+-- Set one or more directories to load images from
+-- @param dirs Table of directories, e.g. {"/path/to/images", "/another/path"}
 function dataset.setDirs(dirs)
   dataset.dirs = dirs
 end
 
+-- Set exactly one file extensions for the images.
+-- Only images with that file extension will be loaded from the defined directories.
+-- @param fileExtension The file extension, e.g. "jpg"-
 function dataset.setFileExtension(fileExtension)
   dataset.fileExtension = fileExtension
 end
 
+-- Set the width and height in pixels to which the input images will be scaled.
+-- @param scale The desired width/height of the images after scaling, e.g. 32.
 function dataset.setScale(scale)
   dataset.scale = scale
 end
 
+-- Set the number of channels of your images, so 1 for grayscale or 3 for color.
+-- If set to 1 then color images will be converted to grayscale.
+-- @param nbChannels Number of channels, e.g. 1 (grayscale) or 3 (color).
 function dataset.setNbChannels(nbChannels)
   dataset.nbChannels = nbChannels
 end
 
+-- Load images from the dataset.
+-- @param startAt Number of the first image.
+-- @param count Count of the images to load.
+-- @return Table of images. You can call :size() on that table to get the number of loaded images.
 function dataset.loadImages(startAt, count)
     local endBefore = startAt + count
 
@@ -53,7 +67,13 @@ function dataset.loadImages(startAt, count)
     return result
 end
 
-
+-- Loads defined range of images of given file extension from one or more directories.
+-- @param dirs Tabel of directories.
+-- @param ext One file extension as string.
+-- @param startAt Number of first image.
+-- @param count Count of images to load (max).
+-- @param doSort Whether to sort the images before reducing to range [startAt:startAt+count].
+-- @return Table of images, as loaded by image.load()
 function dataset.loadImagesFromDirs(dirs, ext, startAt, count, doSort)
     -- code from: https://github.com/andresy/torch-demos/blob/master/load-data/load-images.lua
     local files = {}
