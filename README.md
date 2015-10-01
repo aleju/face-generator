@@ -12,9 +12,7 @@ The code of this repository is a modified version of facebook's [eyescream proje
 
 ![Example faces](images/faces.png?raw=true "Example faces")
 
-Example faces after 1.5 hours of training.
-
-TODO add better image
+Example faces after 2.5 hours of training.
 
 # Requirements
 
