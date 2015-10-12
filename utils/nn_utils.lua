@@ -214,23 +214,56 @@ function nn_utils.switchToEvaluationMode()
 end
 
 function nn_utils.deactivateCuda(net)
+    -- transferring to float first, so that the clone does not happen on the gpu (can cause
+    -- out of memory otherwise)
+    --[[
+    print("A", torch.type(net), torch.type(net:get(1)))
+    net:float()
     local newNet = net:clone()
-    newNet:float()
+    net:cuda()
+    print("B", torch.type(net), torch.type(net:get(1)))
     if torch.type(newNet:get(1)) == 'nn.Copy' then
         return newNet:get(2)
     else
         return newNet
     end
+    --]]
+    
+    if isInCudaMode(net) then
+        -- [1] Copy
+        -- [2] Sequential (the network)
+        -- [3] Copy
+        -- transferring to float first, so that the clone does not happen on the gpu (can cause
+        -- out of memory otherwise)
+        net:get(2):float()
+        local newNet = net:clone()
+        net:get(2):cuda()
+        return newNet
+    else
+        return net:clone()
+    end
 end
 
 function nn_utils.activateCuda(net)
-    local newNet = net:clone()
-    newNet:cuda()
-    local tmp = nn.Sequential()
-    tmp:add(nn.Copy('torch.FloatTensor', 'torch.CudaTensor'))
-    tmp:add(newNet)
-    tmp:add(nn.Copy('torch.CudaTensor', 'torch.FloatTensor'))
-    return tmp
+    if isInCudaMode(net) then
+        return net:clone()
+    else
+        local newNet = net:clone()
+        newNet:cuda()
+        local tmp = nn.Sequential()
+        tmp:add(nn.Copy('torch.FloatTensor', 'torch.CudaTensor'))
+        tmp:add(newNet)
+        tmp:add(nn.Copy('torch.CudaTensor', 'torch.FloatTensor'))
+        return tmp
+    end
+end
+
+function isInCudaMode(net)
+    -- TODO is there a function in cunn to check if :cuda() has been called on a sequential?
+    local l1 = net:get(1)
+    local l2 = net:get(2)
+    local l3 = net:get(3)
+    return torch.type(l1) == 'nn.Copy' and torch.type(l2) == 'nn.Sequential' and torch.type(l3) == 'nn.Copy'
 end
 
 return nn_utils
