@@ -238,7 +238,7 @@ function nn_utils.deactivateCuda(net)
         net:get(2):float()
         local newNet = net:clone()
         net:get(2):cuda()
-        return newNet
+        return newNet:get(2)
     else
         return net:clone()
     end
