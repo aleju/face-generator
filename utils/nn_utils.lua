@@ -102,8 +102,8 @@ function nn_utils.sortImagesByPrediction(images, ascending, nbMaxOut)
         table.sort(imagesWithPreds, function (a,b) return a[2] > b[2] end)
     end
     
-    resultImages = {}
-    resultPredictions = {}
+    local resultImages = {}
+    local resultPredictions = {}
     for i=1,math.min(nbMaxOut,#imagesWithPreds) do
         resultImages[i] = imagesWithPreds[i][1]
         resultPredictions[i] = imagesWithPreds[i][2]
@@ -135,6 +135,20 @@ function nn_utils.visualizeProgress(noiseInputs)
         semiRandomImagesUnrefined = nn_utils.createImagesFromNoise(noiseInputs, true, false)
     end
     local semiRandomImagesRefined = nn_utils.createImagesFromNoise(noiseInputs, true, true)
+    
+    -- denoise
+    local diList = {}
+    if DENOISER ~= nil then
+        local batch = torch.Tensor(#semiRandomImagesRefined, IMG_DIMENSIONS[1], IMG_DIMENSIONS[2], IMG_DIMENSIONS[3])
+        for i=1,#semiRandomImagesRefined do
+            batch[i] = semiRandomImagesRefined[i]:clone()
+        end
+        local denoisedImages = DENOISER:forward(batch)
+        for i=1,denoisedImages:size(1) do
+            --table.insert(diList, semiRandomImagesRefined[i])
+            table.insert(diList, denoisedImages[i]:clone())
+        end
+    end
     
     -- Generate a synthetic test image as sanity test
     -- This should be deemed very bad by D
@@ -170,26 +184,16 @@ function nn_utils.visualizeProgress(noiseInputs)
     -- find good images (according to D) among the randomly generated ones
     local goodImages, _ = nn_utils.sortImagesByPrediction(randomImages, false, 50)
 
-    -- Ugly switch to Float Tensors
-    -- Otherwise Display crashes
-    --if OPT.gpu then
-    --    torch.setdefaulttensortype('torch.FloatTensor')
-    --end
-
     if semiRandomImagesUnrefined then
         DISP.image(semiRandomImagesUnrefined, {win=OPT.window, width=IMG_DIMENSIONS[3]*15, title="semi-random generated images (before G)"})
     end
     DISP.image(semiRandomImagesRefined, {win=OPT.window+1, width=IMG_DIMENSIONS[3]*15, title="semi-random generated images (after G)"})
-    DISP.image(goodImages, {win=OPT.window+2, width=IMG_DIMENSIONS[3]*15, title="best samples (first is best)"})
-    DISP.image(badImages, {win=OPT.window+3, width=IMG_DIMENSIONS[3]*15, title="worst samples (first is worst)"})
-    DISP.image(trainImages, {win=OPT.window+4, width=IMG_DIMENSIONS[3]*15, title="original images from training set"})
-    
-    -- and switch back to Cuda Tensors (if GPU mode is enabled)
-    --if OPT.gpu then
-    --    torch.setdefaulttensortype('torch.CudaTensor')
-    --else
-    --    torch.setdefaulttensortype('torch.FloatTensor')
-    --end
+    if #diList > 0 then
+        DISP.image(diList, {win=OPT.window+2, width=IMG_DIMENSIONS[3]*15, title="images by G, denoised"})
+    end
+    DISP.image(goodImages, {win=OPT.window+3, width=IMG_DIMENSIONS[3]*15, title="best samples (first is best)"})
+    DISP.image(badImages, {win=OPT.window+4, width=IMG_DIMENSIONS[3]*15, title="worst samples (first is worst)"})
+    DISP.image(trainImages, {win=OPT.window+5, width=IMG_DIMENSIONS[3]*15, title="original images from training set"})
     
     -- reactivate dropout
     nn_utils.switchToTrainingMode()
@@ -246,7 +250,8 @@ end
 
 function nn_utils.activateCuda(net)
     if isInCudaMode(net) then
-        return net:clone()
+        --return net:clone()
+        return net
     else
         local newNet = net:clone()
         newNet:cuda()

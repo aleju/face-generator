@@ -105,10 +105,11 @@ function main()
         DECODER:add(nn.SpatialBatchNormalization(8))
         DECODER:add(nn.LeakyReLU(0.333))
         DECODER:add(nn.Dropout(0.2))
+        local imgSize = (IMG_DIMENSIONS[2] - 2 - 2) * (IMG_DIMENSIONS[3] - 2 - 2)
         
-        DECODER:add(nn.View(8 * 28 * 28))
+        DECODER:add(nn.View(8 * imgSize))
         
-        DECODER:add(nn.Linear(8 * 28 * 28, 2048))
+        DECODER:add(nn.Linear(8 * imgSize, 2048))
         DECODER:add(nn.BatchNormalization(2048))
         DECODER:add(nn.LeakyReLU(0.333))
         DECODER:add(nn.Dropout(0.2))
