@@ -44,7 +44,7 @@ end
 function dataset.loadImages(startAt, count)
     local endBefore = startAt + count
 
-    local images = dataset.loadImagesFromDirs(dataset.dirs, dataset.fileExtension, startAt, count, false)
+    local images = dataset.loadImagesFromDirs(dataset.dirs, dataset.fileExtension, startAt, count, true)
     local data = torch.FloatTensor(#images, dataset.nbChannels, dataset.scale, dataset.scale)
     for i=1, #images do
         data[i] = image.scale(images[i], dataset.scale, dataset.scale)
@@ -58,9 +58,10 @@ function dataset.loadImages(startAt, count)
         return N
     end
 
-    setmetatable(result, {__index = function(self, index)
-        return self.data[index]
-    end})
+    setmetatable(result, {
+        __index = function(self, index) return self.data[index] end,
+        __len = function(self) return self.data:size(1) end
+    })
 
     print(string.format('<dataset> loaded %d examples', N))
 
