@@ -6,7 +6,7 @@ This is a script to generate new images of human faces using the technique of ge
 GANs train two networks at the same time: A Generator (G) that draws/creates new images and a Discriminator (D) that distinguishes between real and fake images. G learns to trick D into thinking that his images are real (i.e. learns to produce good looking images). D learns to prevent getting tricked (i.e. learns what real images look like).
 Ideally you end up with a G that produces beautiful images that look like real ones. On human faces that works reasonably well, probably because they contain a lot of structure (autoencoders work well on them too).
 
-The code of this repository is a modified version of facebook's [eyescream project](https://github.com/facebook/eyescream). It does not use the upscaling feature (laplacian pyramid).
+The code in this repository is a modified version of facebook's [eyescream project](https://github.com/facebook/eyescream). It does not use the upscaling feature (laplacian pyramid).
 
 # Example images
 
@@ -22,18 +22,23 @@ To run this script optimally you need
   * `paths` (`luarocks install paths`)
   * `image` (`luarocks install image`)
   * `optim` (`luarocks install optim`)
-  * `cutorch` (`luarocks install cutorch`) (only for GPU training)
-  * `cunn` (`luarocks install cunn`) (only for GPU training)
+  * `cutorch` (`luarocks install cutorch`)
+  * `cunn` (`luarocks install cunn`)
+  * `dpnn` (`luarocks install dpnn`)
 * [display](https://github.com/szym/display)
 * [Labeled Faces in the Wild, cropped version](http://conradsanderson.id.au/lfwcrop/) (colored)
 
-# Execution
+# Usage
 
 To train a new model, follow these steps:
 * Download the [lfw cropped dataset](http://conradsanderson.id.au/lfwcrop/). You should chose the colored dataset as you can activate `--grayscale` mode via the command line parameters.
 * Clone the repository.
+* Start `display` with `~/.display/run.js &`
+* Optional:
+  * Change in `train_denoiser.lua` the line `DATASET.setDirs({"/path/to/lfw_cropped"})` to match your dataset's directory.
+  * Train a denoising autoencoder via `th train_denoiser.lua --plot --gpu=0 --grayscale`.
 * Change in `train.lua` the line `DATASET.setDirs({"/path/to/lfw_cropped"})` to match your dataset's directory.
-* Start the training with the command `th train.lua --gpu=0 --plot --grayscale`, which will train on grayscale images on the GPU and plot via `display` during the training. You can see the plots by opening `http://localhost:8000`.
+* Start the training with the command `th train.lua --plot --gpu=0 --grayscale --denoise`, which will train on grayscale images on the GPU and plot via `display` during the training. You can see the plots by opening `http://localhost:8000`. Add `--denoise` only if you trained a denoising autoencoder.
 
 # Architecture
 
@@ -41,10 +46,10 @@ G is a very small network which starts (by default) with a 100 dimensional noise
 
 D contains three subnetworks:
 * A fully connected network that works directly on the images (without convolutions). It contains two layers of size 1024.
-* A small convolutional network with two layers of 64 kernels (3x3) feeding into a 1024 fully connected layer.
-* A small convolutional network with two layers of 32 kernels (5x5) feeding into a 1024 fully connected layer.
+* A small convolutional network with two layers of 64 kernels (3x3) and two layers of 128 kernels (3x3) feeding into a 1024 fully connected layer. Contains one pooling layer.
+* A small convolutional network with two layers of 32 kernels (5x5) and two layers of 54 kernels (5x5) feeding into a 1024 fully connected layer. Contains two pooling layers.
 
-The three networks are concatenated to a vector of size 3*1024, followed by two fully connected layers of size 2048 and a last layer with 1 neuron.
+The three networks are concatenated to a vector of size 3*1024, followed by one fully connected layers of size 1024 and a final layer with 1 neuron.
 All activations are PReLUs, except for the last layer, which uses sigmoid. Dropout is used between all fully connected layers. Spatial Dropout (drops out full kernel results) is used at the end of the convolutional layers.
 The architecture is intended to capture the rough structure (via the fully connected subnetwork), as well as fine details (3x3 conv net, e.g. for eyes) and rougher details (5x5 conv net, e.g. for skin).
 
@@ -59,9 +64,9 @@ The `train.lua` script has the following parameters:
 * `--network` (default ""): Name of a weights file in the save directory to load.
 * `--plot`: Whether to plot during training.
 * `--N_epoch` (default 1000): How many examples to use during each epoch (-1 means "use the whole dataset").
-* `--G_SGD_lr` (default 0.02): Learning rate for G's SGD, if SGD is used as the optimizer. (Note: There is no decay. You better use Adam or Adagrad.)
+* `--G_SGD_lr` (default 0.02): Learning rate for G's SGD, if SGD is used as the optimizer. (Note: There is no decay. You should use Adam or Adagrad.)
 * `--G_SGD_momentum` (default 0): Momentum for G's SGD.
-* `--D_SGD_lr` (default 0.02): Learning rate for D's SGD, if SGD is used as the optimizer. (Note: There is no decay. You better use Adam or Adagrad.)
+* `--D_SGD_lr` (default 0.02): Learning rate for D's SGD, if SGD is used as the optimizer. (Note: There is no decay. You should use Adam or Adagrad.)
 * `--D_SGD_momentum` (default 0): Momentum for D's SGD.
 * `--G_adam_lr` (default -1): Adam learning rate for G (-1 is automatic).
 * `--D_adam_lr` (default -1): Adam learning rate for D (-1 is automatic).
@@ -81,7 +86,8 @@ The `train.lua` script has the following parameters:
 * `--noiseDim` (default 100): Dimensionality of noise vector that will be fed into G.
 * `--window` (default 3): ID of the first plotting window (in display), will also use about 3 window-ids beyond that.
 * `--scale` (default 32): Scale of the images to train on (height, width). Loaded images will be converted to that size.
-* `--autoencoder` (default ""): Path to the autoencoder to load (optional). Can be trained via `train_autoencoder.lua`. If set, the autoencoder will produce images and G will try to learn how to refine them so that D thinks they are real images. Didn't produce good results.
+* `--autoencoder` (default ""): Path to the autoencoder to load (optional). Can be trained via `train_autoencoder.lua`. If set, the autoencoder will produce images and G will try to learn how to refine them so that D thinks they are real images. Didn't produce good results. Might also not work anymore.
 * `--seed` (default 1): Seed to use for the RNG.
 * `--weightsVisFreq` (default 0): How often to update the windows showing the activity of the network (only if >0; implies starting with `qlua` instead of `th` if set to >0).
 * `--grayscale`: Whether to activate grayscale mode on the images, i.e. training will happen on grayscale images.
+* `--denoise`: If added as parameter, the script will try to load a denoising autoencoder from `logs/denoiser_CxHxW.net`, where C is the number of image channels (1 or 3), H is the height of the images (see `--scale`) and W is the width. A denoiser can be trained using `train_denoiser.lua`.
