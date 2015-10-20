@@ -45,6 +45,7 @@ OPT = lapp[[
   --seed             (default 1)           Seed to use for the RNG
   --weightsVisFreq   (default 0)           How often to update the windows showing the weights (only if >0; implies starting with qlua if >0)
   --grayscale                              Whether to activate grayscale mode on the images
+  --denoise                                Whether to apply the denoiser trained with train_denoiser to the generated images
 ]]
 
 -- check is batch size is valid (x >= 4 and an even number)
@@ -55,6 +56,7 @@ end
 
 -- GPU, seed, threads
 if OPT.gpu < 0 or OPT.gpu > 3 then OPT.gpu = false end
+math.randomseed(OPT.seed)
 torch.manualSeed(OPT.seed)
 torch.setnumthreads(OPT.threads)
 print(OPT)
@@ -71,6 +73,8 @@ if OPT.gpu then
 else
     require 'nn'
 end
+require 'dpnn'
+require 'LeakyReLU'
 torch.setdefaulttensortype('torch.FloatTensor')
 
 CLASSES = {"0", "1"} -- possible output of disciminator, used for confusion matrix
@@ -85,15 +89,35 @@ function main()
     ----------------------------------------------------------------------
     -- Load / Define network
     ----------------------------------------------------------------------
+    if OPT.denoise then
+        -- load denoiser
+        local filename = paths.concat(OPT.save, string.format('denoiser_%dx%dx%d.net', IMG_DIMENSIONS[1], IMG_DIMENSIONS[2], IMG_DIMENSIONS[3]))
+        local tmp = torch.load(filename)
+        DENOISER = nn.Sequential()
+        DENOISER:add(tmp.AE1_DECODER)
+        --DENOISER:add(tmp.AE2_DECODER)
+        DENOISER:float()
+        DENOISER:evaluate()
+    end
+    
     -- load previous networks (D and G)
     -- or initialize them new
     if OPT.network ~= "" then
         print(string.format("<trainer> reloading previously trained network: %s", OPT.network))
-        local tmp = torch.load(OPT.network)
+        require 'cutorch'
+        require 'cunn'
+        
+        local filename = paths.concat(OPT.save, 'adversarial.net')
+        local tmp = torch.load(filename)
         MODEL_D = tmp.D
         MODEL_G = tmp.G
         --OPTSTATE = tmp.optstate
         EPOCH = tmp.epoch
+        
+        if not OPT.gpu then
+            MODEL_D:float()
+            MODEL_G:float()
+        end
     else
         --------------
         -- D
@@ -101,7 +125,7 @@ function main()
         -- One branch with convolutions, one with dense layers
         -- merge them at the end
         --require 'rnn'
-        require 'dpnn'
+        --require 'dpnn'
         --require 'dp'
         
         local branch_conv_fine = nn.Sequential()
@@ -109,10 +133,15 @@ function main()
         branch_conv_fine:add(nn.PReLU())
         branch_conv_fine:add(nn.SpatialConvolution(64, 64, 3, 3, 1, 1, (3-1)/2))
         branch_conv_fine:add(nn.PReLU())
+        --branch_conv_fine:add(nn.SpatialMaxPooling(2, 2))
+        branch_conv_fine:add(nn.SpatialConvolution(64, 128, 3, 3, 1, 1, (3-1)/2))
+        branch_conv_fine:add(nn.PReLU())
+        branch_conv_fine:add(nn.SpatialConvolution(128, 128, 3, 3, 1, 1, (3-1)/2))
+        branch_conv_fine:add(nn.PReLU())
         branch_conv_fine:add(nn.SpatialMaxPooling(2, 2))
         branch_conv_fine:add(nn.SpatialDropout())
-        branch_conv_fine:add(nn.View(64 * (1/4) * IMG_DIMENSIONS[2] * IMG_DIMENSIONS[3]))
-        branch_conv_fine:add(nn.Linear(64 * (1/4) * IMG_DIMENSIONS[2] * IMG_DIMENSIONS[3], 1024))
+        branch_conv_fine:add(nn.View(128 * (1/4) * IMG_DIMENSIONS[2] * IMG_DIMENSIONS[3]))
+        branch_conv_fine:add(nn.Linear(128 * (1/4) * IMG_DIMENSIONS[2] * IMG_DIMENSIONS[3], 1024))
         branch_conv_fine:add(nn.PReLU())
         branch_conv_fine:add(nn.Dropout())
         branch_conv_fine:add(nn.Linear(1024, 1024))
@@ -123,10 +152,15 @@ function main()
         branch_conv_coarse:add(nn.PReLU())
         branch_conv_coarse:add(nn.SpatialConvolution(32, 32, 5, 5, 1, 1, (5-1)/2))
         branch_conv_coarse:add(nn.PReLU())
-        --branch_conv_coarse:add(nn.SpatialMaxPooling(2, 2))
+        branch_conv_coarse:add(nn.SpatialMaxPooling(2, 2))
+        branch_conv_coarse:add(nn.SpatialConvolution(32, 54, 5, 5, 1, 1, (5-1)/2))
+        branch_conv_coarse:add(nn.PReLU())
+        branch_conv_coarse:add(nn.SpatialConvolution(54, 54, 5, 5, 1, 1, (5-1)/2))
+        branch_conv_coarse:add(nn.PReLU())
+        branch_conv_coarse:add(nn.SpatialMaxPooling(2, 2))
         branch_conv_coarse:add(nn.SpatialDropout())
-        branch_conv_coarse:add(nn.View(32 * (4/4) * IMG_DIMENSIONS[2] * IMG_DIMENSIONS[3]))
-        branch_conv_coarse:add(nn.Linear(32 * (4/4) * IMG_DIMENSIONS[2] * IMG_DIMENSIONS[3], 1024))
+        branch_conv_coarse:add(nn.View(54 * (1/4) * (1/4) * IMG_DIMENSIONS[2] * IMG_DIMENSIONS[3]))
+        branch_conv_coarse:add(nn.Linear(54 * (1/4) * (1/4) * IMG_DIMENSIONS[2] * IMG_DIMENSIONS[3], 1024))
         branch_conv_coarse:add(nn.PReLU())
         branch_conv_coarse:add(nn.Dropout())
         branch_conv_coarse:add(nn.Linear(1024, 1024))
@@ -136,6 +170,7 @@ function main()
         branch_dense:add(nn.View(INPUT_SZ))
         branch_dense:add(nn.Linear(INPUT_SZ, 1024))
         branch_dense:add(nn.PReLU())
+        branch_dense:add(nn.Dropout())
         branch_dense:add(nn.Linear(1024, 1024))
         branch_dense:add(nn.PReLU())
 
@@ -147,11 +182,85 @@ function main()
         MODEL_D = nn.Sequential()
         MODEL_D:add(concat)
         MODEL_D:add(nn.JoinTable(2))
-        MODEL_D:add(nn.Linear(1024*3, 2048))
+        MODEL_D:add(nn.Linear(1024 + 1024 + 1024, 1024))
         MODEL_D:add(nn.PReLU())
         MODEL_D:add(nn.Dropout())
-        MODEL_D:add(nn.Linear(2048, 1))
+        MODEL_D:add(nn.Linear(1024, 1))
         MODEL_D:add(nn.Sigmoid())
+        
+        --[[
+        local branch_conv_fine = nn.Sequential()
+        branch_conv_fine:add(nn.SpatialConvolution(IMG_DIMENSIONS[1], 32, 3, 3, 1, 1, (3-1)/2))
+        branch_conv_fine:add(nn.PReLU())
+        branch_conv_fine:add(nn.SpatialConvolution(32, 32, 3, 3, 1, 1, (3-1)/2))
+        branch_conv_fine:add(nn.PReLU())
+        
+        branch_conv_fine:add(nn.SpatialConvolution(32, 768, 3, 3, 1, 1, (3-1)/2))
+        branch_conv_fine:add(nn.PReLU())
+        branch_conv_fine:add(nn.SpatialConvolution(768, 32, 3, 3, 1, 1, (3-1)/2))
+        branch_conv_fine:add(nn.PReLU())
+        
+        branch_conv_fine:add(nn.SpatialDropout())
+        branch_conv_fine:add(nn.View(32 * 32 * 32))
+        branch_conv_fine:add(nn.Linear(32 * 32 * 32, 1024))
+        branch_conv_fine:add(nn.PReLU())
+        branch_conv_fine:add(nn.Dropout())
+        branch_conv_fine:add(nn.Linear(1024, 1024))
+        branch_conv_fine:add(nn.PReLU())
+        branch_conv_fine:add(nn.Dropout())
+        branch_conv_fine:add(nn.Linear(1024, 1))
+        branch_conv_fine:add(nn.Sigmoid())
+        MODEL_D = branch_conv_fine
+        --]]
+        
+        --[[
+        local conv = nn.Sequential()
+        conv:add(nn.SpatialConvolution(IMG_DIMENSIONS[1], 32, 3, 3, 1, 1, 0))
+        conv:add(nn.PReLU())
+        conv:add(nn.SpatialConvolution(32, 128, 3, 3, 1, 1, 0))
+        conv:add(nn.PReLU())
+        conv:add(nn.SpatialConvolution(128, 512, 3, 3, 1, 1, 0))
+        conv:add(nn.PReLU())
+        --conv:add(nn.SpatialAveragePooling(2, 2, 2, 2))
+        --conv:add(nn.SpatialDropout())
+        --conv:add(nn.Dropout())
+        
+        conv:add(nn.View(512, 26*26))
+        local parallel = nn.Parallel(2, 2)
+        for i=1,512 do
+            local seq = nn.Sequential()
+            --seq:add(nn.View(28*28))
+            seq:add(nn.Linear(26*26, 64))
+            seq:add(nn.PReLU())
+            parallel:add(seq)
+        end
+        conv:add(parallel)
+        conv:add(nn.Dropout())
+        
+        conv:add(nn.View(512*64))
+        conv:add(nn.Linear(512*64, 1024))
+        conv:add(nn.PReLU())
+        conv:add(nn.Dropout())
+        
+        local dense = nn.Sequential()
+        dense:add(nn.View(INPUT_SZ))
+        dense:add(nn.Linear(INPUT_SZ, 1024))
+        dense:add(nn.PReLU())
+        dense:add(nn.Dropout())
+        
+        local concat = nn.ConcatTable()
+        concat:add(conv)
+        concat:add(dense)
+        
+        MODEL_D = nn.Sequential()
+        MODEL_D:add(concat)
+        MODEL_D:add(nn.JoinTable(2))
+        MODEL_D:add(nn.Linear(1024 + 1024, 256))
+        MODEL_D:add(nn.PReLU())
+        MODEL_D:add(nn.Dropout())
+        MODEL_D:add(nn.Linear(256, 1))
+        MODEL_D:add(nn.Sigmoid())
+        --]]
 
         --------------
         -- G
@@ -178,9 +287,17 @@ function main()
             MODEL_G:add(nn.CAddTable()) -- add refined version to original
             MODEL_G:add(nn.View(IMG_DIMENSIONS[1], IMG_DIMENSIONS[2], IMG_DIMENSIONS[3]))
         else
+            --require 'LeakyReLU'
             -- No autoencoder chosen, just build a standard G
             MODEL_G = nn.Sequential()
+            --MODEL_G:add(nn.Linear(OPT.noiseDim, 2048))
+            --MODEL_G:add(nn.PReLU())
+            --MODEL_G:add(nn.Linear(2048, INPUT_SZ))
             MODEL_G:add(nn.Linear(OPT.noiseDim, 2048))
+            --MODEL_G:add(nn.BatchNormalization(2048))
+            --MODEL_G:add(nn.PReLU())
+            --MODEL_G:add(nn.Linear(128, 512))
+            --MODEL_G:add(nn.BatchNormalization(512))
             MODEL_G:add(nn.PReLU())
             MODEL_G:add(nn.Linear(2048, INPUT_SZ))
             MODEL_G:add(nn.Sigmoid())
