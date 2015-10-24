@@ -10,6 +10,8 @@ dataset.fileExtension = ""
 dataset.originalScale = 64
 dataset.scale = 32
 dataset.nbChannels = 3
+-- cache for filepaths to all images
+dataset.paths = nil
 
 -- Set one or more directories to load images from
 -- @param dirs Table of directories, e.g. {"/path/to/images", "/another/path"}
@@ -66,6 +68,78 @@ function dataset.loadImages(startAt, count)
     print(string.format('<dataset> loaded %d examples', N))
 
     return result
+end
+
+-- Loads a defined number of randomly selected images from
+-- the cached paths (cached in loadPaths()).
+-- @param count Number of random images.
+-- @return List of Tensors
+function dataset.loadRandomImages(count)
+    if dataset.paths == nil then
+        dataset.loadPaths()
+    end
+
+    local shuffle = torch.randperm(#dataset.paths)    
+    
+    local images = {}
+    for i=1,math.min(shuffle:size(1), count) do
+       -- load each image
+       table.insert(images, image.load(dataset.paths[shuffle[i]], dataset.nbChannels, "float"))
+    end
+    
+    local data = torch.FloatTensor(#images, dataset.nbChannels, dataset.scale, dataset.scale)
+    for i=1, #images do
+        data[i] = image.scale(images[i], dataset.scale, dataset.scale)
+    end
+
+    --local ker = torch.ones(3)
+    --local m = nn.SpatialSubtractiveNormalization(1, ker)
+    --data = m:forward(data)
+
+    local N = data:size(1)
+    local result = {}
+    result.scaled = data
+
+    function result:size()
+        return N
+    end
+
+    setmetatable(result, {__index = function(self, index)
+        return self.scaled[index]
+    end})
+
+    print(string.format('<dataset> loaded %d random examples', N))
+
+    return result
+end
+
+-- Loads the paths of all images in the defined files
+-- (with defined file extensions)
+function dataset.loadPaths()
+    local files = {}
+    local dirs = dataset.dirs
+    local ext = dataset.fileExtension
+
+    for i=1, #dirs do
+        local dir = dirs[i]
+        -- Go over all files in directory. We use an iterator, paths.files().
+        for file in paths.files(dir) do
+            -- We only load files that match the extension
+            if file:find(ext .. '$') then
+                -- and insert the ones we care about in our table
+                table.insert(files, paths.concat(dir,file))
+            end
+        end
+
+        -- Check files
+        if #files == 0 then
+            error('given directory doesnt contain any files of type: ' .. ext)
+        end
+    end
+    
+    print(string.format("<dataset> Loaded %d filepaths", #files))
+    
+    dataset.paths = files
 end
 
 -- Loads defined range of images of given file extension from one or more directories.
