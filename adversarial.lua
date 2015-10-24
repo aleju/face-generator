@@ -313,7 +313,6 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
     print("Confusion of normal D:")
     print(CONFUSION)
     local tV = CONFUSION.totalValid
-    TRAIN_LOGGER:add{['% mean class accuracy (train set)'] = tV * 100}
     CONFUSION:zero()
 
     -- save/log current net
