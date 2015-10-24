@@ -76,26 +76,6 @@ function main()
         local ENCODER = nn.Sequential()
         ENCODER:add(nn.WhiteNoise(0.0, 0.1))
         
-        --[[
-        local DECODER = nn.Sequential()
-        DECODER:add(nn.SpatialConvolution(IMG_DIMENSIONS[1], 32, 3, 3, 1, 1, 0))
-        DECODER:add(nn.LeakyReLU(0.333))
-        DECODER:add(nn.SpatialConvolution(32, 32, 3, 3, 1, 1, 0))
-        DECODER:add(nn.LeakyReLU(0.333))
-        DECODER:add(nn.SpatialConvolution(32, 64, 3, 3, 1, 1, 0))
-        DECODER:add(nn.LeakyReLU(0.333))
-        DECODER:add(nn.SpatialConvolution(64, 64, 3, 3, 1, 1, 0))
-        DECODER:add(nn.LeakyReLU(0.333))
-        DECODER:add(nn.View(64 * (IMG_DIMENSIONS[2]-8) * (IMG_DIMENSIONS[3]-8)))
-        DECODER:add(nn.Linear(64 * (IMG_DIMENSIONS[2]-8) * (IMG_DIMENSIONS[3]-8), 1024))
-        DECODER:add(nn.LeakyReLU(0.333))
-        DECODER:add(nn.Linear(1024, 1024))
-        DECODER:add(nn.LeakyReLU(0.333))
-        DECODER:add(nn.Linear(1024, IMG_DIMENSIONS[1] * IMG_DIMENSIONS[2] * IMG_DIMENSIONS[3]))
-        DECODER:add(nn.Sigmoid())
-        DECODER:add(nn.View(IMG_DIMENSIONS[1], IMG_DIMENSIONS[2], IMG_DIMENSIONS[3]))
-        --]]
-        
         local DECODER = nn.Sequential()
         
         DECODER:add(nn.SpatialConvolution(IMG_DIMENSIONS[1], 8, 3, 3, 1, 1, 0))
@@ -149,8 +129,12 @@ function main()
     -- get/create dataset
     ----------------------------------------------------------------------
     -- adjust dataset
-    DATASET.setDirs({"/media/aj/grab/ml/datasets/lfwcrop_color/faces"})
-    DATASET.setFileExtension("ppm") -- pgm for lfwcrop_grey
+    if OPT.aws then
+        DATASET.setDirs({"/mnt/datasets/out_aug_64x64"})
+    else
+        DATASET.setDirs({"dataset/out_aug_64x64"})
+    end
+    DATASET.setFileExtension("jpg")
     DATASET.setScale(OPT.scale)
     DATASET.setNbChannels(IMG_DIMENSIONS[1])
 
