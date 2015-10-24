@@ -90,7 +90,15 @@ end
 -- @return Tuple (list of images, list of predictions between 0.0 and 1.0)
 --                                where 1.0 means "probably real"
 function nn_utils.sortImagesByPrediction(images, ascending, nbMaxOut)
-    local predictions = MODEL_D:forward(images)
+    local predictions = torch.Tensor(images:size(1), 1)
+    local nBatches = 1 + (images:size(1)/OPT.batchSize)
+    for i=1,nBatches do
+        local batchStart = 1 + (i-1)*OPT.batchSize
+        local batchEnd = math.min(i*OPT.batchSize, images:size(1))
+        --print("[sort]", i, batchStart, batchEnd)
+        predictions[{{batchStart, batchEnd}, {1}}] = MODEL_D:forward(images[{{batchStart, batchEnd}, {}, {}, {}}])
+    end
+    
     local imagesWithPreds = {}
     for i=1,images:size(1) do
         imagesWithPreds[i] = {images[i], predictions[i][1]}
@@ -248,19 +256,75 @@ function nn_utils.deactivateCuda(net)
     end
 end
 
+-- Activates CUDA mode on a network and returns the result.
+-- This adds Copy layers at the start and end of the network.
+-- Expects the default tensor to be FloatTensor.
+-- @param net The network to activate CUDA mode on.
+-- @returns The CUDA network
 function nn_utils.activateCuda(net)
-    if isInCudaMode(net) then
-        --return net:clone()
-        return net
-    else
-        local newNet = net:clone()
-        newNet:cuda()
+    --[[
+    local newNet = net:clone()
+    newNet:cuda()
+    local tmp = nn.Sequential()
+    tmp:add(nn.Copy('torch.FloatTensor', 'torch.CudaTensor'))
+    tmp:add(newNet)
+    tmp:add(nn.Copy('torch.CudaTensor', 'torch.FloatTensor'))
+    return tmp
+    --]]
+    local newNet = net:clone()
+    
+    -- does the network already contain any copy layers?
+    local containsCopyLayers = false
+    local modules = newNet:listModules()
+    for i=1,#modules do
+        local t = torch.type(modules[i])
+        if string.find(t, "Copy") ~= nil then
+            containsCopyLayers = true
+            break
+        end
+    end
+    
+    -- no copy layers in the network yet
+    -- add them at the start and end
+    if not containsCopyLayers then
         local tmp = nn.Sequential()
         tmp:add(nn.Copy('torch.FloatTensor', 'torch.CudaTensor'))
         tmp:add(newNet)
         tmp:add(nn.Copy('torch.CudaTensor', 'torch.FloatTensor'))
-        return tmp
+        newNet:cuda()
+        newNet = tmp
     end
+    
+    --[[
+    local firstCopyFound = false
+    local lastCopyFound = false
+    modules = newNet:listModules()
+    for i=1,#modules do
+        local t = torch.type(modules[i])
+        if string.find(t, "Copy") ~= nil then
+            if not firstCopyFound then
+                firstCopyFound = true
+                modules[i]:cuda()
+                modules[i].intype = 'torch.FloatTensor'
+                modules[i].outtype = 'torch.CudaTensor'
+            else
+                -- last copy found
+                lastCopyFound = true
+                modules[i]:float()
+                modules[i].intype = 'torch.CudaTensor'
+                modules[i].outtype = 'torch.FloatTensor'
+            end
+        elseif lastCopyFound then
+            modules[i]:float()
+        elseif firstCopyFound then
+            modules[i]:cuda()
+        else
+            modules[i]:float()
+        end
+    end
+    --]]
+    
+    return newNet
 end
 
 function isInCudaMode(net)
