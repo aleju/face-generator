@@ -50,7 +50,7 @@ OPT = lapp[[
   --aws                                    Activate AWS settings
 ]]
 
-if OPT.scale != 16 and OPT.scale != 32 then
+if OPT.scale ~= 16 and OPT.scale ~= 32 then
     print("[Warning] models are not optimized for chosen scale")
 end
 
@@ -113,8 +113,7 @@ function main()
         require 'cutorch'
         require 'cunn'
         
-        local filename = paths.concat(OPT.save, 'adversarial.net')
-        local tmp = torch.load(filename)
+        local tmp = torch.load(OPT.network)
         MODEL_D = tmp.D
         MODEL_G = tmp.G
         --OPTSTATE = tmp.optstate
