@@ -109,14 +109,8 @@ function c2f(images, G, D, fineSize)
 end
 
 function blur(img)
-    print(img:size())
-    local ker = torch.ones(5)
-    local m = nn.SpatialSubtractiveNormalization(1, ker)
-    local processed = m:forward(img)
-    image.display(img)
-    image.display(processed)
-    io.read()
-    return processed
+    local img2 = image.convolve(img:clone(), image.gaussian(3), "same")
+    return img2
 end
 
 function toGrid(images, nrow)
