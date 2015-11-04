@@ -4,7 +4,7 @@ This is a script to generate new images of human faces using the technique of ge
 GANs train two networks at the same time: A Generator (G) that draws/creates new images and a Discriminator (D) that distinguishes between real and fake images. G learns to trick D into thinking that his images are real (i.e. learns to produce good looking images). D learns to prevent getting tricked (i.e. learns what real images look like).
 Ideally you end up with a G that produces beautiful images that look like real ones. On human faces that works reasonably well, probably because they contain a lot of structure (autoencoders work well on them too).
 
-The code in this repository is a modified version of facebook's [eyescream project](https://github.com/facebook/eyescream). It does not use the upscaling feature (laplacian pyramid).
+The code in this repository is a modified version of facebook's [eyescream project](https://github.com/facebook/eyescream).
 
 # Example images
 
