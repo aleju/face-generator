@@ -1,5 +1,3 @@
-Work in Progress.
-
 # About
 
 This is a script to generate new images of human faces using the technique of generative adversarial networks (GAN), as described in the paper by [Ian J. Goodfellow](http://arxiv.org/abs/1406.2661).
@@ -14,7 +12,7 @@ The code in this repository is a modified version of facebook's [eyescream proje
 ![Example faces](images/faces.png?raw=true "Example faces")
 
 32x32 color images, generated first as 16x16 images and then refined:
-![Example faces](images/faces.png?raw=true "Example faces")
+![Example faces color](images/best_0008_c2f_32.jpg?raw=true "Example faces color")
 
 # Requirements
 
