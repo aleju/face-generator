@@ -127,7 +127,7 @@ function main()
         --------------
         -- D
         --------------
-        MODEL_D = MODELS.create_D(IMG_DIMENSIONS, OPT.scale)
+        MODEL_D = MODELS.create_D(IMG_DIMENSIONS)
 
         --------------
         -- G
@@ -155,7 +155,7 @@ function main()
             MODEL_G:add(nn.View(IMG_DIMENSIONS[1], IMG_DIMENSIONS[2], IMG_DIMENSIONS[3]))
         else
             -- No autoencoder chosen, just build a standard G
-            MODEL_G = MODELS.create_G(IMG_DIMENSIONS, OPT.noiseDim, OPT.scale)
+            MODEL_G = MODELS.create_G(IMG_DIMENSIONS, OPT.noiseDim)
         end
       
         NN_UTILS.initializeWeights(MODEL_D)
@@ -193,6 +193,7 @@ function main()
         end
     end
 
+    -- Activate GPU mode
     if OPT.gpu then
         if MODEL_AE then MODEL_AE = NN_UTILS.activateCuda(MODEL_AE) end
         MODEL_D = NN_UTILS.activateCuda(MODEL_D)

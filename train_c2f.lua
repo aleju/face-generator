@@ -120,7 +120,7 @@ if OPT.network ~= "" then
     end
 else
     MODEL_D = MODELS.create_D(IMG_DIMENSIONS, OPT.gpu ~= false)
-    MODEL_G = MODELS.create_G(IMG_DIMENSIONS, OPT.noiseDim, OPT.gpu ~= false)
+    MODEL_G = MODELS.create_G(IMG_DIMENSIONS, OPT.gpu ~= false)
 end
     
 -- loss function: negative log-likelihood
