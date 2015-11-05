@@ -1,3 +1,10 @@
+--[[
+This script trains a denoising autoencoder.
+After training, you can add it to the training run of the G/D pair in train.lua by
+adding "--denoise" as a parameter.
+I added it in an effort to easily get rid of noise and fix distortions in the generated faces.
+Worked like arse. -__-
+--]]
 require 'torch'
 require 'nn'
 require 'optim'
@@ -16,7 +23,7 @@ OPT = lapp[[
   --save             (default "logs")      subdirectory to save logs
   --saveFreq         (default 50)          save every saveFreq epochs
   --network          (default "")          reload pretrained network
-  --plot                                   plot while training
+  --noplot                                 Whetehr to not plot while training
   --batchSize        (default 128)         batch size
   --coefL1           (default 0)           L1 penalty on the weights
   --coefL2           (default 0)           L2 penalty on the weights
@@ -24,7 +31,7 @@ OPT = lapp[[
   --threads          (default 8)           number of threads
   --gpu              (default 0)           gpu to run on (default cpu)
   --window           (default 10)          first window id (will block range ID to ID+3)
-  --scale            (default 32)          scale of images to train on
+  --scale            (default 16)          scale of images to train on
   --seed             (default 1)           Seed to use for the RNG
   --grayscale                              Whether to activate grayscale mode on the images
 ]]
@@ -56,13 +63,10 @@ IMG_DIMENSIONS = {3, OPT.scale, OPT.scale} -- axis of images: 1 or 3 channels, <
 if OPT.grayscale then IMG_DIMENSIONS[1] = 1 end
 INPUT_SZ = IMG_DIMENSIONS[1] * IMG_DIMENSIONS[2] * IMG_DIMENSIONS[3] -- size in values/pixels per input image (channels*height*width)
 
+-- Main function, initialize models and train them.
 function main()
-    -- 8/8 convs into 2048/2048 mit lrelu und bnorm
-    -- nach E350
-    -- AE1: 0.0024
-    -- AE2: 0.0023
-
     if OPT.network ~= "" then
+        -- Continue previous run / load network
         print(string.format("<trainer> reloading previously trained network: %s", OPT.network))
         local filename = paths.concat(OPT.save, 'denoiser.net')
         local tmp = torch.load(filename)
@@ -73,6 +77,9 @@ function main()
         AE2:add(tmp.AE2_DECODER)
         EPOCH = tmp.epoch
     else
+        -- Initialize autoencoder
+        -- Encoder: Just image + white/gaussian noise.
+        -- Decoder: 8 conv 3x3, 8 conv 3x3 into 2x 2048 linear
         local ENCODER = nn.Sequential()
         ENCODER:add(nn.WhiteNoise(0.0, 0.1))
         
@@ -105,9 +112,12 @@ function main()
         AE:add(ENCODER)
         AE:add(DECODER)
         
+        -- AE2 is a second decoder that receives the images from the first autoencoder and
+        -- also denoises them. Can't remember what i hoped to achieve with that.
         AE2 = AE:get(2):clone()
     end
 
+    -- Copy to GPU
     if OPT.gpu then
         AE = NN_UTILS.activateCuda(AE)
         AE2 = NN_UTILS.activateCuda(AE2)
@@ -161,7 +171,7 @@ function main()
     while true do
         loss1, loss2 = train(TRAIN_DATA)
 
-        if OPT.plot and EPOCH and EPOCH % 1 == 0 then
+        if not OPT.noplot then
             AE:evaluate()
             AE2:evaluate()
             
@@ -183,6 +193,7 @@ function main()
             disp.image(samplesVal[2], {win=OPT.window+4, width=IMG_DIMENSIONS[3]*15, title=OPT.save .. " (decoded val)"})
             disp.image(samplesVal[3], {win=OPT.window+5, width=IMG_DIMENSIONS[3]*15, title=OPT.save .. " (decoded val 2)"})
             
+            -- Plot the loss values of the last epochs
             disp.plot(PLOT_DATA, {win=OPT.window+6, labels={'epoch', 'AE train loss', 'AE2 train loss', 'AE val loss', 'AE2 val loss'}, title=string.format('Loss at epoch %d (min1=%.5f, min2=%.5f)', EPOCH-1, MIN_LOSS, MIN_LOSS2)})
             
             AE:training()
@@ -191,6 +202,9 @@ function main()
     end
 end
 
+-- Convert a list/table of image tensors into one tensor.
+-- @param imageList List of image tensors
+-- @return Tensor
 function imageListToTensor(imageList)
     local tens = torch.Tensor(#imageList, imageList[1]:size(1), imageList[1]:size(2), imageList[1]:size(3))
     for i=1,#imageList do
@@ -200,6 +214,9 @@ function imageListToTensor(imageList)
 end
 
 -- Get examples to plot
+-- @param ds Examples as returned by Dataset
+-- @param N Number of images
+-- @returns Tuple {images, images decoded by AE1, images decoded by AE1 then AE2}
 function getSamples(ds, N)
     local images = torch.Tensor(N, IMG_DIMENSIONS[1], IMG_DIMENSIONS[2], IMG_DIMENSIONS[3])
     for i=1, N do
@@ -212,7 +229,9 @@ function getSamples(ds, N)
     return {images:clone(), decoded:clone(), decoded2:clone()}
 end
 
--- train one epoch
+-- Train one epoch
+-- @param usedDataset Examples as returned by Dataset
+-- @returns Loss AE1, Loss AE2
 function train(usedDataset)
     EPOCH = EPOCH or 1
     local N = usedDataset:size()
@@ -323,11 +342,11 @@ function train(usedDataset)
 
     -- time taken
     time = sys.clock() - time
-    print("<trainer> time required for this epoch = " .. (time) .. "s")
+    print(string.format("<trainer> time required for this epoch = %ds", time))
     time = time / usedDataset:size()
-    print("<trainer> time to learn 1 sample = " .. (time*1000) .. 'ms')
-    print("<trainer> loss1 = " .. (sumLossCriterion/(N/OPT.batchSize)))
-    print("<trainer> loss2 = " .. (sumLossCriterion2/(N/OPT.batchSize)))
+    print(string.format("<trainer> time to learn 1 sample = %.4fms", (time*1000)))
+    print(string.format("<trainer> loss AE1 = %.4f", (sumLossCriterion/(N/OPT.batchSize))))
+    print(string.format("<trainer> loss AE2 = %.4f", (sumLossCriterion2/(N/OPT.batchSize))))
 
     -- save/log current net
     if EPOCH % OPT.saveFreq == 0 then
@@ -347,6 +366,8 @@ function train(usedDataset)
     return sumLossCriterion/(N/OPT.batchSize), sumLossCriterion2/(N/OPT.batchSize)
 end
 
+-- Calls os.exit() if any NaNs were detected in given tensor.
+-- @param checkIn A tensor to search for NaNs
 function exitIfNaNs(checkIn)
     local nanCount = checkIn:ne(checkIn):sum()
     if nanCount > 0 then
