@@ -90,7 +90,7 @@ DATASET.setFineScale(OPT.fineSize)
 if OPT.aws then
     DATASET.setDirs({"/mnt/datasets/out_aug_64x64"})
 else
-    DATASET.setDirs({"dataset/out_aug_64x64/faces"})
+    DATASET.setDirs({"dataset/out_aug_64x64"})
 end
 ----------------------------------------------------------------------
 
