@@ -4,7 +4,12 @@ require 'layers.cudnnSpatialConvolutionUpsample'
 
 local models = {}
 
-function models.create_G(dimensions, noiseDim, cuda)
+-- Create coarse to fine G network.
+-- Color and grayscale currently get the same network, which is suboptimal.
+-- @param dimensions Image dimensions as table of {count channels, height, width}
+-- @param cuda Whether to start the network in CUDA/GPU mode (true).
+-- @returns Sequential
+function models.create_G(dimensions, cuda)
     local nplanes = 64
     local model_G = nn.Sequential()
     
@@ -35,6 +40,11 @@ function models.create_G(dimensions, noiseDim, cuda)
     return model_G
 end
 
+-- Create coarse to fine D network.
+-- Color and grayscale currently get the same network, which is suboptimal.
+-- @param dimensions Image dimensions as table of {count channels, height, width}
+-- @param cuda Whether to start the network in CUDA/GPU mode (true).
+-- @returns Sequential
 function models.create_D(dimensions, cuda)
     local nplanes = 64
     local model_D = nn.Sequential()

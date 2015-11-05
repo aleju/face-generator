@@ -3,7 +3,12 @@ require 'nn'
 
 local models = {}
 
-function models.create_G(dimensions, noiseDim, scale)
+-- Create base G network.
+-- Color and grayscale currently get the same network, which is suboptimal.
+-- @param dimensions Image dimensions as table of {count channels, height, width}
+-- @param noiseDim Size of the noise vector as integer, e.g. 100
+-- @returns Sequential
+function models.create_G(dimensions, noiseDim)
     local inputSz = dimensions[1] * dimensions[2] * dimensions[3]
     local model = nn.Sequential()
     model:add(nn.Linear(noiseDim, 2048))
@@ -14,14 +19,21 @@ function models.create_G(dimensions, noiseDim, scale)
     return model
 end
 
-function models.create_D(dimensions, scale)
-    if OPT.scale == 16 then
+-- Create base D network.
+-- @param dimensions Image dimensions as table of {count channels, height, width}
+-- @returns Sequential
+function models.create_D(dimensions)
+    if dimensions[2] == 16 then
         return models.create_D16(dimensions)
     else
         return models.create_D32(dimensions)
     end
 end
 
+-- Create base D network for 16x16 images.
+-- Color and grayscale currently get the same network, which is suboptimal.
+-- @param dimensions Image dimensions as table of {count channels, height, width}
+-- @returns Sequential
 function models.create_D16(dimensions)
     local inputSz = dimensions[1] * dimensions[2] * dimensions[3]
     local branch_conv_fine = nn.Sequential()
@@ -73,25 +85,21 @@ function models.create_D16(dimensions)
     return model
 end
 
+-- Create base D network for 32x32 images.
+-- Color and grayscale currently get the same network, which is suboptimal.
+-- @param dimensions Image dimensions as table of {count channels, height, width}
+-- @returns Sequential
 function models.create_D32(dimensions)
     local branch_conv_fine = nn.Sequential()
     branch_conv_fine:add(nn.SpatialConvolution(IMG_DIMENSIONS[1], 64, 3, 3, 1, 1, (3-1)/2))
     branch_conv_fine:add(nn.PReLU())
     branch_conv_fine:add(nn.SpatialConvolution(64, 64, 3, 3, 1, 1, (3-1)/2))
     branch_conv_fine:add(nn.PReLU())
-    --branch_conv_fine:add(nn.SpatialMaxPooling(2, 2))
-    --branch_conv_fine:add(nn.SpatialConvolution(64, 128, 3, 3, 1, 1, (3-1)/2))
-    --branch_conv_fine:add(nn.PReLU())
-    --branch_conv_fine:add(nn.SpatialConvolution(128, 128, 3, 3, 1, 1, (3-1)/2))
-    --branch_conv_fine:add(nn.PReLU())
     branch_conv_fine:add(nn.SpatialMaxPooling(2, 2))
     branch_conv_fine:add(nn.SpatialDropout())
     branch_conv_fine:add(nn.View(64 * (1/4) * IMG_DIMENSIONS[2] * IMG_DIMENSIONS[3]))
     branch_conv_fine:add(nn.Linear(64 * (1/4) * IMG_DIMENSIONS[2] * IMG_DIMENSIONS[3], 1024))
     branch_conv_fine:add(nn.PReLU())
-    --branch_conv_fine:add(nn.Dropout())
-    --branch_conv_fine:add(nn.Linear(1024, 1024))
-    --branch_conv_fine:add(nn.PReLU())
     
     local branch_conv_coarse = nn.Sequential()
     branch_conv_coarse:add(nn.SpatialConvolution(IMG_DIMENSIONS[1], 32, 5, 5, 1, 1, (5-1)/2))
