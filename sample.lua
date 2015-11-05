@@ -37,6 +37,8 @@ torch.manualSeed(OPT.seed)
 cutorch.setDevice(OPT.gpu + 1)
 cutorch.manualSeed(OPT.seed)
 
+-- Main function, generates random images, saves some of them, upscales them via
+-- coarse to fine networks, saves again some of them.
 function main()
     MODEL_G, MODEL_D, MODEL_G_C2F_32, MODEL_D_C2F_32 = loadModels()
     
@@ -68,6 +70,12 @@ function main()
     print("Finished.")
 end
 
+-- Refine upscaled images via coarse to fine networks.
+-- @param images List of images.
+-- @param G Trained coarse to fine generator model.
+-- @param D Trained coarse to fine discriminator model.
+-- @param fineSize Intended upscaled size of images.
+-- @returns List of refined images
 function c2f(images, G, D, fineSize)
     local triesPerImage = 10
     local result = {}
@@ -108,15 +116,26 @@ function c2f(images, G, D, fineSize)
     return result
 end
 
+-- Blurs a given image.
+-- @param img Image tensor
+-- @returns Image tensor, blurry image
 function blur(img)
     local img2 = image.convolve(img:clone(), image.gaussian(3), "same")
     return img2
 end
 
+-- Converts images to one image grid with set amount of rows.
+-- @param images Tensor of images
+-- @param nrow Number of rows.
+-- @return Tensor
 function toGrid(images, nrow)
     return image.toDisplayTensor{input=images, nrow=nrow}
 end
 
+-- Selects N random images from a tensor of images.
+-- @param tensor Tensor of images
+-- @param n Number of random images to select
+-- @returns List/table of images
 function selectRandomImagesFrom(tensor, n)
     local shuffle = torch.randperm(tensor:size(1))
     local result = {}
@@ -126,6 +145,8 @@ function selectRandomImagesFrom(tensor, n)
     return result
 end
 
+-- Loads all necessary models/networks and returns them.
+-- @returns G, D, G_c2f32, D_c2f32
 function loadModels()
     local file
     
