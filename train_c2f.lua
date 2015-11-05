@@ -188,8 +188,8 @@ function getSamples(ds, N)
   local N = N or 8
   local noiseInputs = torch.Tensor(N, NOISE_DIM[1], NOISE_DIM[2], NOISE_DIM[3])
   local condInputs = torch.Tensor(N, COND_DIM[1], COND_DIM[2], COND_DIM[3])
-  local gt_diff = torch.Tensor(N, IMG_DIMENSIONS[1], IMG_DIMENSIONS[2], IMG_DIMENSIONS[3])
-  local gt = torch.Tensor(N, 3, OPT.fineSize, OPT.fineSize)
+  local gt_diff = torch.Tensor(N, IMG_DIMENSIONS[1], OPT.fineSize, OPT.fineSize)
+  local gt = torch.Tensor(N, IMG_DIMENSIONS[1], OPT.fineSize, OPT.fineSize)
 
   -- Generate samples
   noiseInputs:uniform(-1, 1)
