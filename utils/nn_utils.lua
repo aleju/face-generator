@@ -34,13 +34,8 @@ end
 -- @returns Tensor of shape (N, OPT.noiseDim)
 function nn_utils.createNoiseInputs(N)
     local noiseInputs = torch.Tensor(N, OPT.noiseDim)
-    --noiseInputs:normal(0.0, 0.35)
     noiseInputs:uniform(-1.0, 1.0)
-    --if OPT.gpu then
-    --    return noiseInputs:cuda()
-    --else
-        return noiseInputs
-    --end
+    return noiseInputs
 end
 
 -- Feeds noise vectors into G or AE+G and returns the result.
@@ -62,7 +57,7 @@ function nn_utils.createImagesFromNoise(noiseInputs, outputAsList, refineWithG)
     if outputAsList then
         local imagesList = {}
         for i=1, images:size(1) do
-            imagesList[#imagesList+1] = images[i] --:float()
+            imagesList[#imagesList+1] = images[i]
         end
         return imagesList
     else
@@ -95,7 +90,6 @@ function nn_utils.sortImagesByPrediction(images, ascending, nbMaxOut)
     for i=1,nBatches do
         local batchStart = 1 + (i-1)*OPT.batchSize
         local batchEnd = math.min(i*OPT.batchSize, images:size(1))
-        --print("[sort]", i, batchStart, batchEnd)
         predictions[{{batchStart, batchEnd}, {1}}] = MODEL_D:forward(images[{{batchStart, batchEnd}, {}, {}, {}}])
     end
     
@@ -153,7 +147,6 @@ function nn_utils.visualizeProgress(noiseInputs)
         end
         local denoisedImages = DENOISER:forward(batch)
         for i=1,denoisedImages:size(1) do
-            --table.insert(diList, semiRandomImagesRefined[i])
             table.insert(diList, denoisedImages[i]:clone())
         end
     end
@@ -183,7 +176,7 @@ function nn_utils.visualizeProgress(noiseInputs)
     
     -- Place the sanity test image and one original image from the training corpus among
     -- the random Images. The first should be deemed bad by D, the latter as good.
-    randomImages[299] = TRAIN_DATA[3] -- one real face as sanity test
+    randomImages[299] = TRAIN_DATA[1] -- one real face as sanity test
     randomImages[300] = sanityTestImage -- synthetic non-face as sanity test
     
     -- find bad images (according to D) among the randomly generated ones
