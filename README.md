@@ -15,12 +15,12 @@ The code in this repository is a modified version of facebook's [eyescream proje
 ![Example faces grayscale 16x16](images/grayscale_best_0002_base.jpg?raw=true "Example faces grayscale 16x16")
 ![Example faces grayscale 32x32 c2f](images/grayscale_best_0002_c2f_32.jpg?raw=true "Example faces grayscale 32x32 c2f")
 
-*Generated 16x16 grayscale images (top), scaled to 32x32 with coarse to fine / laplacian pyramid method (bottom). Scaling + coarse to fine often tends to cause distortions.*
+*Generated 16x16 grayscale images (left), scaled to 32x32 with coarse to fine / laplacian pyramid method (right). Scaling + coarse to fine often tends to cause distortions.*
 
 ![Example faces grayscale 16x16](images/color_best_0001_base.jpg?raw=true "Example faces color 16x16")
 ![Example faces grayscale 32x32 c2f](images/color_best_0001_c2f_32.jpg?raw=true "Example faces color 32x32 c2f")
 
-*Generated 16x16 color images (top), scaled to 32x32 with coarse to fine / laplacian pyramid method (bottom). The distortions are even more visible here. Maybe a better architecture for the coarse to fine networks would help.*
+*Generated 16x16 color images (left), scaled to 32x32 with coarse to fine / laplacian pyramid method (right). The distortions are even more visible here. Maybe a better architecture for the coarse to fine networks would help.*
 
 <!---
 ![Example faces color](images/best_0008_c2f_32.jpg?raw=true "Example faces color")
