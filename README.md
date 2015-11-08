@@ -8,15 +8,25 @@ The code in this repository is a modified version of facebook's [eyescream proje
 
 # Example images
 
-32x32 grayscale images (generated from [Labeled Faces in the Wild, cropped version](http://conradsanderson.id.au/lfwcrop/)):
 ![Example faces](images/faces.png?raw=true "Example faces")
+*32x32 grayscale images (generated from [Labeled Faces in the Wild, cropped version](http://conradsanderson.id.au/lfwcrop/))*
 
-32x32 color images, generated first as 16x16 images and then refined:
+![Example faces grayscale 16x16](images/grayscale_best_0002_base.jpg?raw=true "Example faces grayscale 16x16")
+![Example faces grayscale 32x32 c2f](images/grayscale_best_0002_base.jpg?raw=true "Example faces grayscale 32x32 c2f")
+*Generated 16x16 grayscale images (top), scaled to 32x32 with coarse to fine / laplacian pyramid method (bottom). Scaling + coarse to fine often tends to cause distortions.*
+
+![Example faces grayscale 16x16](images/color_best_0001_base.jpg?raw=true "Example faces color 16x16")
+![Example faces grayscale 32x32 c2f](images/color_best_0001_base.jpg?raw=true "Example faces color 32x32 c2f")
+*Generated 16x16 color images (top), scaled to 32x32 with coarse to fine / laplacian pyramid method (bottom). The distortions are even more visible here. Maybe a better architecture for the coarse to fine networks would help.*
+
+<!---
 ![Example faces color](images/best_0008_c2f_32.jpg?raw=true "Example faces color")
+*32x32 color images, generated first as 16x16 images and then scaled and refined.*
+-->
 
 # Requirements
 
-The generate the dataset:
+To generate the dataset:
 * [Labeled Faces in the Wild](http://vis-www.cs.umass.edu/lfw/) (original dataset without funneling)
 * Python 2.7 (only tested with that version)
 * Scipy + Numpy
@@ -39,21 +49,24 @@ To run the GAN part:
 
 Building the dataset:
 * Download [Labeled Faces in the Wild](http://vis-www.cs.umass.edu/lfw/) and extract it somewhere
-* In `dataset/` run `python dataset.py --path="/foo/bar/lfw"`, where `/foo/bar/lfw` is the path to your LFW dataset
+* In `dataset/` run `python generate_dataset.py --path="/foo/bar/lfw"`, where `/foo/bar/lfw` is the path to your LFW dataset
 
 To train a new model, follow these steps:
 * Start `display` with `~/.display/run.js &`
 * Open `http://localhost:8000` to see the training progress
-* Train a 16x16 color generator with `th train.lua --scale=16`
-* Train a 16 to 32 upscaler with `th train_c2f.lua`
+* Train a 16x16 color generator with `th train.lua --scale=16` (add `--grayscale` for grayscale images)
+* Train a 16 to 32 upscaler with `th train_c2f.lua --coarseSize=16 --fineSize=32` (add `--grayscale` for grayscale images)
 * Sample images with `th sample.lua`
 
-You might have to work with the command line parameters `D_iterations` and `G_iterations` to get decend performance.
+You might have to work with the command line parameters `--D_iterations` and `--G_iterations` to get decent performance.
+Sometimes you also might have to change `--D_L2` (D's L2 norm) or `--G_L2` (G's L2 norm). (Similar parameters are available for L1.)
+Learning speed can often be increased a little bit by increasing `--N_epoch` from 1000 to e.g. 5000 (random images per epoch).
 
 # Architecture
 
-G is a very small network which starts (by default) with a 100 dimensional noise vector, followed by one hidden layer of size 2048 (using PReLU activation) and the output layer, which consists of all image pixels (Sigmoid). No dropout is used.
+G is a very small network which starts (by default) with a 100 dimensional noise vector, followed by one hidden layer of size 2048 (using PReLU activation) and the output layer, which consists of all image pixels (sigmoid activation). No dropout is used.
 
+<!---
 D for 16x16 images contains three subnetworks:
 * A fully connected network that works directly on the images (without convolutions). It contains two layers of size 1024.
 * A small convolutional network with two layers of 64 kernels (3x3) feeding into a 1024 fully connected layer. Contains one pooling layer.
@@ -62,6 +75,20 @@ D for 16x16 images contains three subnetworks:
 The three networks are concatenated to a vector of size 3*1024, followed by one fully connected layers of size 1024 and a final layer with 1 neuron.
 All activations are PReLUs, except for the last layer, which uses sigmoid. Dropout is used between all fully connected layers. Spatial Dropout (drops out full kernel results) is used at the end of the convolutional layers.
 The architecture is intended to capture the rough structure (via the fully connected subnetwork), as well as fine details (3x3 conv net, e.g. for eyes) and rougher details (5x5 conv net, e.g. for skin).
+-->
+
+D for 16x16 images is a convolutional neural net. All convolutional layers have a kernel size of 3x3. The rough architecture is:
+* 128 kernels
+* 128 kernels
+* Average Pooling
+* 512 kernels (2,2 stride)
+* 1024 kernels (2,2 stride)
+* Spatial Dropout
+* Linear 1024
+* Linear 1
+
+All activations are PReLUs (exept for the last layer, which is sigmoid). The network also has a second branch, which only contains a tiny dense network and connects from the start (initial image) to the end (last linear layer), i.e. it skips most layers.
+The second branch is necessary to kick off learning, otherwise the network learns nothing.
 
 The coarse to fine network has the following structure:
 * G:
