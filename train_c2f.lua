@@ -114,7 +114,7 @@ if OPT.network ~= "" then
     OPTSTATE = tmp.optstate
     EPOCH = tmp.epoch
     
-    if OPT.gpu ~= false then
+    if OPT.gpu == false then
         MODEL_D:float()
         MODEL_G:float()
     end
