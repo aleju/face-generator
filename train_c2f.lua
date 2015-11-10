@@ -225,7 +225,7 @@ while true do
     -- plot errors
     if not OPT.noplot then
         local to_plot = getSamples(VAL_DATA, 20)
-        disp.image(to_plot, {win=OPT.window, width=2*10*IMG_DIMENSIONS[3], title="Coarse, GT, G img, GT diff, G diff (" .. OPT.save .. " epoch " .. EPOCH .. ")"})
+        disp.image(to_plot, {win=OPT.window, width=2*10*IMG_DIMENSIONS[3], title="Coarse, GT, G img, GT diff, G diff (" .. OPT.save .. " epoch " .. (EPOCH-1) .. ")"})
     end
     
     -- train/test
