@@ -10,7 +10,7 @@ local models = {}
 -- @param cuda Whether to start the network in CUDA/GPU mode (true).
 -- @returns Sequential
 function models.create_G(dimensions, cuda)
-    return models.create_G_c(dimensions, cuda)
+    return models.create_G_d(dimensions, cuda)
 end
 
 function models.create_G_a(dimensions, cuda)
@@ -91,6 +91,40 @@ function models.create_G_c(dimensions, cuda)
     inner:add(cudnn.SpatialConvolutionUpsample(dimensions[1]+1, 64, 3, 3, 1))
     inner:add(nn.PReLU())
     inner:add(cudnn.SpatialConvolutionUpsample(64, 128, 3, 3, 1))
+    inner:add(nn.PReLU())
+    inner:add(cudnn.SpatialConvolutionUpsample(128, 256, 5, 5, 1))
+    inner:add(nn.PReLU())
+    inner:add(cudnn.SpatialConvolutionUpsample(256, dimensions[1], 7, 7, 1))
+    inner:add(nn.View(dimensions[1], dimensions[2], dimensions[3]))
+    model_G:add(inner)
+    if cuda then
+        model_G:add(nn.Copy('torch.CudaTensor', 'torch.FloatTensor'))
+    end
+    
+    model_G = require('weight-init')(model_G, 'heuristic')
+    
+    if cuda then
+        model_G:get(3):cuda()
+    end
+    
+    return model_G
+end
+
+function models.create_G_d(dimensions, cuda)
+    local model_G = nn.Sequential()
+    
+    model_G:add(nn.JoinTable(2, 2))
+    
+    if cuda then
+        model_G:add(nn.Copy('torch.FloatTensor', 'torch.CudaTensor'))
+    end
+    
+    local inner = nn.Sequential()
+    inner:add(cudnn.SpatialConvolutionUpsample(dimensions[1]+1, 64, 3, 3, 1))
+    inner:add(nn.PReLU())
+    inner:add(cudnn.SpatialConvolutionUpsample(64, 64, 3, 3, 1))
+    inner:add(nn.PReLU())
+    inner:add(cudnn.SpatialConvolutionUpsample(64, 128, 5, 5, 1))
     inner:add(nn.PReLU())
     inner:add(cudnn.SpatialConvolutionUpsample(128, 256, 5, 5, 1))
     inner:add(nn.PReLU())
