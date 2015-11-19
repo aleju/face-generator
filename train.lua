@@ -41,7 +41,7 @@ OPT = lapp[[
   --gpu              (default 0)           gpu to run on (0-4 or -1 for cpu)
   --noiseDim         (default 100)         dimensionality of noise vector
   --window           (default 3)           ID of the first plotting window, will also use some window-ids beyond that
-  --scale            (default 16)          scale of images to train on (height, width)
+  --scale            (default 32)          scale of images to train on (height, width)
   --seed             (default 1)           Seed to use for the RNG
   --weightsVisFreq   (default 0)           How often to update the windows showing the weights (only if >0; implies starting with qlua if >0)
   --grayscale                              Whether to activate grayscale mode on the images
