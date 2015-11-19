@@ -14,7 +14,7 @@ MODELS = require 'models'
 ----------------------------------------------------------------------
 -- parse command-line options
 OPT = lapp[[
-  --batchSize        (default 128)         batch size (must be even, must be >= 4)
+  --batchSize        (default 32)          batch size (must be even, must be >= 4)
   --save             (default "logs")      subdirectory to save logs
   --saveFreq         (default 30)          save every saveFreq epochs
   --network          (default "")          reload pretrained network
@@ -42,7 +42,6 @@ OPT = lapp[[
   --noiseDim         (default 100)         dimensionality of noise vector
   --window           (default 3)           ID of the first plotting window, will also use some window-ids beyond that
   --scale            (default 16)          scale of images to train on (height, width)
-  --autoencoder      (default "")          path to autoencoder to load (optional)
   --seed             (default 1)           Seed to use for the RNG
   --weightsVisFreq   (default 0)           How often to update the windows showing the weights (only if >0; implies starting with qlua if >0)
   --grayscale                              Whether to activate grayscale mode on the images
@@ -69,6 +68,10 @@ print(OPT)
 print('<torch> set nb of threads to ' .. torch.getnumthreads())
 
 -- run on gpu if chosen
+require 'nn'
+require 'cutorch'
+require 'cunn'
+require 'layers.cudnnSpatialConvolutionUpsample'
 if OPT.gpu then
     print("<trainer> starting gpu support...")
     require 'cutorch'
@@ -118,6 +121,7 @@ function main()
         MODEL_G = tmp.G
         --OPTSTATE = tmp.optstate
         EPOCH = tmp.epoch
+        if EPOCH ~= nil then EPOCH = EPOCH + 1 end
         
         if OPT.gpu == false then
             MODEL_D:float()
@@ -125,77 +129,17 @@ function main()
         end
     else
         --------------
-        -- D
+        -- D, G
         --------------
         MODEL_D = MODELS.create_D(IMG_DIMENSIONS)
-
-        --------------
-        -- G
-        --------------
-        if OPT.autoencoder ~= "" then
-            -- Merge of autoencoder and G
-            -- Autoencoder generates images, G tries to generate refined versions
-            -- Concat layer then merges both
-            local left = nn.Sequential()
-            left:add(nn.View(INPUT_SZ))
-            local right = nn.Sequential()
-            right:add(nn.View(INPUT_SZ))
-            right:add(nn.Linear(INPUT_SZ, 1024))
-            right:add(nn.PReLU())
-            right:add(nn.Linear(1024, INPUT_SZ))
-            right:add(nn.Tanh())
-            right:add(nn.MulConstant(0.25)) -- Limit the output to -0.25 to +0.25 (refine)
-
-            local concat = nn.ConcatTable()
-            concat:add(left)
-            concat:add(right)
-            MODEL_G = nn.Sequential()
-            MODEL_G:add(concat)
-            MODEL_G:add(nn.CAddTable()) -- add refined version to original
-            MODEL_G:add(nn.View(IMG_DIMENSIONS[1], IMG_DIMENSIONS[2], IMG_DIMENSIONS[3]))
-        else
-            -- No autoencoder chosen, just build a standard G
-            MODEL_G = MODELS.create_G(IMG_DIMENSIONS, OPT.noiseDim)
-        end
+        MODEL_G = MODELS.create_G(IMG_DIMENSIONS, OPT.noiseDim)
       
         NN_UTILS.initializeWeights(MODEL_D)
         NN_UTILS.initializeWeights(MODEL_G)
     end
 
-    -- if we use an autoencoder then initialize it here
-    if OPT.autoencoder == "" then
-        print("[INFO] No Autoencoder network specified, will not use an autoencoder.")
-    else
-        print("<trainer> Loading autoencoder")
-        local tmp = torch.load(OPT.autoencoder)
-        local savedAutoencoder = tmp.AE
-
-        MODEL_AE = nn.Sequential()
-        MODEL_AE:add(nn.Linear(OPT.noiseDim, 256))
-        MODEL_AE:add(nn.ReLU())
-        MODEL_AE:add(nn.Linear(256, INPUT_SZ))
-        MODEL_AE:add(nn.Sigmoid())
-        MODEL_AE:add(nn.View(IMG_DIMENSIONS[1], IMG_DIMENSIONS[2], IMG_DIMENSIONS[3]))
-
-        -- extract the decoder part from the autoencoder and set the weights of MODEL_AE
-        -- to the ones of the decoder
-        local mapping = {{1,6+1}, {3,6+3}, {5,6+5}}
-        for i=1, #mapping do
-            print(string.format("Loading AE layer %d from autoencoder layer %d ...", mapping[i][1], mapping[i][2]))
-            local mapTo = mapping[i][1]
-            local mapFrom = mapping[i][2]
-            if MODEL_AE.modules[mapTo].weight and savedAutoencoder.modules[mapFrom].weight then
-                MODEL_AE.modules[mapTo].weight = savedAutoencoder.modules[mapFrom].weight
-            end
-            if MODEL_AE.modules[mapTo].bias and savedAutoencoder.modules[mapFrom].bias then
-                MODEL_AE.modules[mapTo].bias = savedAutoencoder.modules[mapFrom].bias
-            end
-        end
-    end
-
     -- Activate GPU mode
     if OPT.gpu then
-        if MODEL_AE then MODEL_AE = NN_UTILS.activateCuda(MODEL_AE) end
         MODEL_D = NN_UTILS.activateCuda(MODEL_D)
         MODEL_G = NN_UTILS.activateCuda(MODEL_G)
     end
@@ -208,12 +152,12 @@ function main()
     PARAMETERS_G, GRAD_PARAMETERS_G = MODEL_G:getParameters()
 
     -- print networks
-    print("Autoencoder network:")
-    print(MODEL_AE)
-    print('Discriminator network:')
-    print(MODEL_D)
-    print('Generator network:')
     print(MODEL_G)
+    print(MODEL_D)
+
+    -- count free parameters in D/G
+    print(string.format('Number of free parameters in D: %d', NN_UTILS.getNumberOfParameters(MODEL_D)))
+    print(string.format('Number of free parameters in G: %d', NN_UTILS.getNumberOfParameters(MODEL_G)))
 
     ----------------------------------------------------------------------
     -- get/create dataset

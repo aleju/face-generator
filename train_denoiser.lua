@@ -353,6 +353,8 @@ function train(usedDataset)
         local filename = paths.concat(OPT.save, string.format('denoiser_%dx%dx%d.net', IMG_DIMENSIONS[1], IMG_DIMENSIONS[2], IMG_DIMENSIONS[3]))
         os.execute('mkdir -p ' .. sys.dirname(filename))
         print('<trainer> saving network to '..filename)
+        NN_UTILS.prepareNetworkForSave(AE)
+        NN_UTILS.prepareNetworkForSave(AE2)
         local AE1_nocuda = NN_UTILS.deactivateCuda(AE)
         local AE2_nocuda = NN_UTILS.deactivateCuda(AE2)
         torch.save(filename, {AE1_ENCODER = AE1_nocuda:get(1),

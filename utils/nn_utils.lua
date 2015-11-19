@@ -41,17 +41,20 @@ end
 -- Feeds noise vectors into G or AE+G and returns the result.
 -- @param noiseInputs Tensor from createNoiseInputs()
 -- @param outputAsList Whether to return the images as one list or as a tensor.
--- @param refineWithG Whether to allow AE+G or just AE (if AE was defined)
 -- @returns Either list of images (as returned by G/AE) or tensor of images
-function nn_utils.createImagesFromNoise(noiseInputs, outputAsList, refineWithG)
+function nn_utils.createImagesFromNoise(noiseInputs, outputAsList)
     local images
-    if MODEL_AE then
-        images = MODEL_AE:forward(noiseInputs)
-        if refineWithG == nil or refineWithG ~= false then
-            images = MODEL_G:forward(images)
+    local N = noiseInputs:size(1)
+    local nBatches = math.ceil(N/OPT.batchSize)
+    for i=1,nBatches do
+        local batchStart = 1 + (i-1)*OPT.batchSize
+        local batchEnd = math.min(i*OPT.batchSize, N)
+        local generated = MODEL_G:forward(noiseInputs[{{batchStart, batchEnd}}]):clone()
+        if images == nil then
+            local img = generated[1]
+            images = torch.Tensor(N, img:size(1), img:size(2), img:size(3))
         end
-    else
-        images = MODEL_G:forward(noiseInputs)
+        images[{{batchStart, batchEnd}, {}, {}, {}}] = generated
     end
     
     if outputAsList then
@@ -86,7 +89,7 @@ end
 --                                where 1.0 means "probably real"
 function nn_utils.sortImagesByPrediction(images, ascending, nbMaxOut)
     local predictions = torch.Tensor(images:size(1), 1)
-    local nBatches = 1 + (images:size(1)/OPT.batchSize)
+    local nBatches = math.ceil(images:size(1)/OPT.batchSize)
     for i=1,nBatches do
         local batchStart = 1 + (i-1)*OPT.batchSize
         local batchEnd = math.min(i*OPT.batchSize, images:size(1))
@@ -218,6 +221,74 @@ function nn_utils.switchToEvaluationMode()
     MODEL_D:evaluate()
 end
 
+--[[
+function nn_utils.prepareNetworkForSave(net)
+    local modules = net:listModules()
+    for i=1,#modules do
+        local m = modules[i]
+        if m.output then
+            m.output = torch.Tensor()
+            print(i, "Resetting m.output")
+        else
+            print(i, "Not setting m.output")
+        end
+        if m.gradInput then
+            m.gradInput = torch.Tensor()
+            print(i, "Resetting m.gradInput")
+        else
+            print(i, "Not setting m.gradInput")
+        end
+    end
+end
+--]]
+
+-- from https://github.com/torch/DEPRECEATED-torch7-distro/issues/47
+function nn_utils.zeroDataSize(data)
+    if type(data) == 'table' then
+        for i = 1, #data do
+            data[i] = nn_utils.zeroDataSize(data[i])
+        end
+    elseif type(data) == 'userdata' then
+        data = torch.Tensor():typeAs(data)
+    end
+    return data
+end
+
+-- from https://github.com/torch/DEPRECEATED-torch7-distro/issues/47
+-- Resize the output, gradInput, etc temporary tensors to zero (so that the on disk size is smaller)
+function nn_utils.prepareNetworkForSave(node)
+    if node.output ~= nil then
+        node.output = nn_utils.zeroDataSize(node.output)
+    end
+    if node.gradInput ~= nil then
+        node.gradInput = nn_utils.zeroDataSize(node.gradInput)
+    end
+    if node.finput ~= nil then
+        node.finput = nn_utils.zeroDataSize(node.finput)
+    end
+    -- Recurse on nodes with 'modules'
+    if (node.modules ~= nil) then
+        if (type(node.modules) == 'table') then
+            for i = 1, #node.modules do
+                local child = node.modules[i]
+                nn_utils.prepareNetworkForSave(child)
+            end
+        end
+    end
+    collectgarbage()
+end
+
+function nn_utils.getNumberOfParameters(net)
+    local nparams = 0
+    local dModules = net:listModules()
+    for i=1,#dModules do
+        if dModules[i].weight ~= nil then
+            nparams = nparams + dModules[i].weight:nElement()
+        end
+    end
+    return nparams
+end
+
 function nn_utils.deactivateCuda(net)
     -- transferring to float first, so that the clone does not happen on the gpu (can cause
     -- out of memory otherwise)
@@ -264,11 +335,10 @@ function nn_utils.activateCuda(net)
     tmp:add(nn.Copy('torch.CudaTensor', 'torch.FloatTensor'))
     return tmp
     --]]
-    local newNet = net:clone()
     
     -- does the network already contain any copy layers?
     local containsCopyLayers = false
-    local modules = newNet:listModules()
+    local modules = net:listModules()
     for i=1,#modules do
         local t = torch.type(modules[i])
         if string.find(t, "Copy") ~= nil then
@@ -279,13 +349,17 @@ function nn_utils.activateCuda(net)
     
     -- no copy layers in the network yet
     -- add them at the start and end
-    if not containsCopyLayers then
+    if containsCopyLayers then
+        return net
+    else
+        local newNet = net:clone()
         local tmp = nn.Sequential()
         tmp:add(nn.Copy('torch.FloatTensor', 'torch.CudaTensor'))
         tmp:add(newNet)
         tmp:add(nn.Copy('torch.CudaTensor', 'torch.FloatTensor'))
         newNet:cuda()
         newNet = tmp
+        return newNet
     end
     
     --[[

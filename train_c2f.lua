@@ -112,7 +112,7 @@ if OPT.network ~= "" then
     MODEL_D = tmp.D
     MODEL_G = tmp.G
     OPTSTATE = tmp.optstate
-    EPOCH = tmp.epoch
+    EPOCH = tmp.epoch + 1
     
     if OPT.gpu == false then
         MODEL_D:float()

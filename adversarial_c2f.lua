@@ -211,7 +211,9 @@ function adversarial.train(trainData)
         end
         print(string.format("<trainer> saving network to %s", filename))
         
-        torch.save(filename, {D = MODEL_D, G = MODEL_G, opt = OPT, epoch=EPOCH+1})
+        NN_UTILS.prepareNetworkForSave(MODEL_G)
+        NN_UTILS.prepareNetworkForSave(MODEL_D)
+        torch.save(filename, {D = MODEL_D, G = MODEL_G, opt = OPT, epoch=EPOCH})
     end
 
     -- next epoch

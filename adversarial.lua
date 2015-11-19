@@ -323,8 +323,9 @@ function adversarial.train(dataset, maxAccuracyD, accsInterval)
             os.execute(string.format("mv %s %s.old", filename, filename))
         end
         print(string.format("<trainer> saving network to %s", filename))
-        --torch.save(filename, {D = NN_UTILS.deactivateCuda(MODEL_D), G = NN_UTILS.deactivateCuda(MODEL_G), opt = OPT})
-        torch.save(filename, {D = MODEL_D, G = MODEL_G, opt = OPT})
+        NN_UTILS.prepareNetworkForSave(MODEL_D)
+        NN_UTILS.prepareNetworkForSave(MODEL_G)
+        torch.save(filename, {D = MODEL_D, G = MODEL_G, opt = OPT, epoch = EPOCH})
     end
 
     -- next epoch
