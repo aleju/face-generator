@@ -46,11 +46,14 @@ end
 function dataset.loadImages(startAt, count)
     local endBefore = startAt + count
 
-    local images = dataset.loadImagesFromDirs(dataset.dirs, dataset.fileExtension, startAt, count, true)
+    --[[
+    local images = dataset.loadImagesFromDirs(dataset.dirs, dataset.fileExtension, startAt, count, true, dataset.scale)
     local data = torch.FloatTensor(#images, dataset.nbChannels, dataset.scale, dataset.scale)
     for i=1, #images do
-        data[i] = image.scale(images[i], dataset.scale, dataset.scale)
+        data[i] = images[i]
     end
+    --]]
+    local data = dataset.loadImagesFromDirs(dataset.dirs, dataset.fileExtension, startAt, count, true, dataset.scale)
 
     local result = {}
     result.data = data
@@ -148,8 +151,9 @@ end
 -- @param startAt Number of first image.
 -- @param count Count of images to load (max).
 -- @param doSort Whether to sort the images before reducing to range [startAt:startAt+count].
--- @return Table of images, as loaded by image.load()
-function dataset.loadImagesFromDirs(dirs, ext, startAt, count, doSort)
+-- @param scale Desired height/width of images.
+-- @return FloatTensor
+function dataset.loadImagesFromDirs(dirs, ext, startAt, count, doSort, scale)
     -- code from: https://github.com/andresy/torch-demos/blob/master/load-data/load-images.lua
     local files = {}
 
@@ -190,10 +194,15 @@ function dataset.loadImagesFromDirs(dirs, ext, startAt, count, doSort)
     -- 4. Finally we load images
 
     -- Go over the file list:
-    local images = {}
+    local images = torch.FloatTensor(#filesExtracted, dataset.nbChannels, scale, scale)
     for i,file in ipairs(filesExtracted) do
         -- load each image
-        table.insert(images, image.load(file, dataset.nbChannels, "float"))
+        local img = image.load(file, dataset.nbChannels, "float")
+        images[i] = image.scale(img, scale, scale)
+        
+        if i % 10000 == 0 then
+            collectgarbage()
+        end
     end
     
     return images
