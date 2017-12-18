@@ -127,7 +127,7 @@ def augment(image, n,
         # clip to 0-255
         img = np.clip(img, 0, 255).astype(np.uint8)
         
-        arr = tf.warp(img, matrix, mode="nearest") # projects to float 0-1
+        arr = tf.warp(img, matrix, mode="constant") # projects to float 0-1
         img = np.array(arr * 255, dtype=np.uint8)
         result.append(img)
         
